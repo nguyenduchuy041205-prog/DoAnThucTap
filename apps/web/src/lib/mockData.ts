@@ -378,3 +378,4 @@ export const initialFinancials: CostProfitSummary[] = [
     profitPerHead: 7177777,
   },
 ]
+
