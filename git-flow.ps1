@@ -1,9 +1,4 @@
-﻿<#
-.SYNOPSIS
-    CROP COOP — Git Workflow Automation Script (Interactive Arrow Menu)
-#>
-
-param(
+﻿param(
     [string]$Action,
     [string]$Message
 )
@@ -24,129 +19,129 @@ function Show-Header {
 }
 
 function Invoke-Status {
-    Show-Header "TRẠNG THÁI CÁC FILE (git status)"
+    Show-Header "TRANG THAI CAC FILE (git status)"
     git status
 }
 
 function Invoke-Diff {
-    Show-Header "CHI TIẾT CÁC THAY ĐỔI (git diff)"
+    Show-Header "CHI TIET CAC THAY DOI (git diff)"
     git diff
 }
 
 function Invoke-AddFile {
-    Show-Header "THÊM 1 FILE CỤ THỂ"
+    Show-Header "THEM 1 FILE CU THE"
     git status -s
-    $file = Read-Host "`nNhập đường dẫn file cần add"
+    $file = Read-Host "`nNhap duong dan file can add"
     if ($file) {
         git add $file
-        Write-Host "[✓] Đã add: $file" -ForegroundColor Green
+        Write-Host "[OK] Da add: $file" -ForegroundColor Green
     }
 }
 
 function Invoke-AddAll {
-    Show-Header "THÊM TẤT CẢ FILE THAY ĐỔI (git add .)"
+    Show-Header "THEM TAT CA FILE THAY DOI (git add .)"
     git add .
-    Write-Host "[✓] Đã add tất cả file thay đổi vào Staging." -ForegroundColor Green
+    Write-Host "[OK] Da add tat ca file thay doi vao Staging." -ForegroundColor Green
     git status -s
 }
 
 function Invoke-Commit {
-    Show-Header "COMMIT CÁC FILE ĐÃ ADD"
-    $msg = Read-Host "Nhập thông điệp commit"
+    Show-Header "COMMIT CAC FILE DA ADD"
+    $msg = Read-Host "Nhap thong diep commit"
     if ($msg) {
         git commit -m $msg
-        Write-Host "[✓] Đã tạo commit thành công!" -ForegroundColor Green
+        Write-Host "[OK] Da tao commit thanh cong!" -ForegroundColor Green
     } else {
-        Write-Host "[!] Thông điệp commit không được để trống." -ForegroundColor Red
+        Write-Host "[!] Thong diep commit khong duoc de trong." -ForegroundColor Red
     }
 }
 
 function Invoke-CommitAmend {
-    Write-Host "`n[!] CẢNH BÁO: Chỉ dùng khi commit gần nhất CHƯA push lên GitHub." -ForegroundColor Yellow
+    Write-Host "`n[!] CANH BAO: Chi dung khi commit gan nhat CHUA push len GitHub." -ForegroundColor Yellow
     git log -1 --oneline
-    $newMsg = Read-Host "Nhập thông điệp mới (hoặc Enter để giữ nguyên)"
+    $newMsg = Read-Host "Nhap thong diep moi (hoac Enter de giu nguyen)"
     if ($newMsg) {
         git commit --amend -m $newMsg
     } else {
         git commit --amend --no-edit
     }
-    Write-Host "[✓] Đã cập nhật commit gần nhất!" -ForegroundColor Green
+    Write-Host "[OK] Da cap nhat commit gan nhat!" -ForegroundColor Green
 }
 
 function Invoke-RemoteAdd {
-    Show-Header "KẾT NỐI VỚI REPOSITORY GITHUB"
-    Write-Host "Remote hiện tại:" -ForegroundColor DarkGray
+    Show-Header "KET NOI VOI REPOSITORY GITHUB"
+    Write-Host "Remote hien tai:" -ForegroundColor DarkGray
     git remote -v
-    $url = Read-Host "`nNhập URL kho GitHub (ví dụ https://github.com/user/repo.git)"
+    $url = Read-Host "`nNhap URL kho GitHub (vi du https://github.com/user/repo.git)"
     if ($url) {
         $hasOrigin = git remote | Where-Object { $_ -eq "origin" }
         if ($hasOrigin) {
             git remote set-url origin $url
-            Write-Host "[✓] Đã cập nhật lại origin thành: $url" -ForegroundColor Green
+            Write-Host "[OK] Da cap nhat lai origin thanh: $url" -ForegroundColor Green
         } else {
             git remote add origin $url
-            Write-Host "[✓] Đã kết nối với: $url" -ForegroundColor Green
+            Write-Host "[OK] Da ket noi voi: $url" -ForegroundColor Green
         }
     }
 }
 
 function Invoke-Push {
     $branch = Get-CurrentBranch
-    Show-Header "PUSH CODE LÊN GITHUB"
-    $inputBranch = Read-Host "Tên nhánh muốn push [Mặc định: $branch]"
+    Show-Header "PUSH CODE LEN GITHUB"
+    $inputBranch = Read-Host "Ten nhanh muon push [Mac dinh: $branch]"
     if (-not $inputBranch) { $inputBranch = $branch }
-    Write-Host "Đang đẩy code lên origin/$inputBranch..." -ForegroundColor Yellow
+    Write-Host "Dang day code len origin/$inputBranch..." -ForegroundColor Yellow
     git push -u origin $inputBranch
 }
 
 function Invoke-Pull {
     $branch = Get-CurrentBranch
-    Show-Header "PULL CODE MỚI NHẤT TỪ GITHUB"
-    $inputBranch = Read-Host "Tên nhánh muốn pull [Mặc định: $branch]"
+    Show-Header "PULL CODE MOI NHAT TU GITHUB"
+    $inputBranch = Read-Host "Ten nhanh muon pull [Mac dinh: $branch]"
     if (-not $inputBranch) { $inputBranch = $branch }
-    Write-Host "Đang pull code từ origin/$inputBranch..." -ForegroundColor Yellow
+    Write-Host "Dang pull code tu origin/$inputBranch..." -ForegroundColor Yellow
     git pull origin $inputBranch
 }
 
 function Invoke-Fetch {
-    Show-Header "FETCH DỮ LIỆU TỪ GITHUB"
+    Show-Header "FETCH DU LIEU TU GITHUB"
     git fetch origin --prune
-    Write-Host "[✓] Đã tải về lịch sử mới nhất từ GitHub." -ForegroundColor Green
+    Write-Host "[OK] Da tai ve lich su moi nhat tu GitHub." -ForegroundColor Green
 }
 
 function Invoke-BranchList {
-    Show-Header "DANH SÁCH NHÁNH HIỆN CÓ"
+    Show-Header "DANH SACH NHANH HIEN CO"
     git branch -a
 }
 
 function Invoke-BranchCreate {
-    $name = Read-Host "Nhập tên nhánh mới"
+    $name = Read-Host "Nhap ten nhanh moi"
     if ($name) {
         git branch $name
-        Write-Host "[✓] Đã tạo nhánh: $name" -ForegroundColor Green
+        Write-Host "[OK] Da tao nhanh: $name" -ForegroundColor Green
     }
 }
 
 function Invoke-BranchSwitch {
     git branch
-    $name = Read-Host "Nhập tên nhánh muốn chuyển đến"
+    $name = Read-Host "Nhap ten nhanh muon chuyen den"
     if ($name) {
         git switch $name
     }
 }
 
 function Invoke-BranchCreateAndSwitch {
-    $name = Read-Host "Nhập tên nhánh mới muốn tạo và chuyển sang ngay"
+    $name = Read-Host "Nhap ten nhanh moi muon tao va chuyen sang ngay"
     if ($name) {
         git switch -c $name
-        Write-Host "[✓] Đang làm việc trên nhánh mới: $name" -ForegroundColor Green
+        Write-Host "[OK] Dang lam viec tren nhanh moi: $name" -ForegroundColor Green
     }
 }
 
 function Invoke-BranchMerge {
     $branch = Get-CurrentBranch
-    Write-Host "`nBạn đang đứng ở nhánh: $branch" -ForegroundColor Yellow
-    $source = Read-Host "Nhập tên nhánh muốn gộp (merge) vào $branch"
+    Write-Host "`nBan dang dung o nhanh: $branch" -ForegroundColor Yellow
+    $source = Read-Host "Nhap ten nhanh muon gop (merge) vao $branch"
     if ($source) {
         git merge $source
     }
@@ -154,9 +149,9 @@ function Invoke-BranchMerge {
 
 function Invoke-BranchDelete {
     git branch
-    $del = Read-Host "Nhập tên nhánh cần xóa"
+    $del = Read-Host "Nhap ten nhanh can xoa"
     if ($del) {
-        $confirm = Read-Host "Bạn có chắc chắn muốn xóa nhánh '$del'? (y/N)"
+        $confirm = Read-Host "Ban co chac chan muon xoa nhanh '$del'? (y/N)"
         if ($confirm -eq "y" -or $confirm -eq "Y") {
             git branch -d $del
         }
@@ -164,54 +159,54 @@ function Invoke-BranchDelete {
 }
 
 function Invoke-LogOneline {
-    Show-Header "LỊCH SỬ COMMIT (10 COMMIT GẦN NHẤT)"
+    Show-Header "LICH SU COMMIT (10 COMMIT GAN NHAT)"
     git log --oneline -n 10 --graph --decorate
 }
 
 function Invoke-LogFull {
-    Show-Header "LỊCH SỬ COMMIT CHI TIẾT"
+    Show-Header "LICH SU COMMIT CHI TIET"
     git log -n 5
 }
 
 function Invoke-ResetSoft {
     Write-Host "`n[git reset --soft HEAD~1]" -ForegroundColor Yellow
-    Write-Host "Hành động: Hủy commit gần nhất nhưng GIỮ NGUYÊN code đã sửa trong Staging." -ForegroundColor Green
-    $confirm = Read-Host "Bạn có muốn tiếp tục? (y/N)"
+    Write-Host "Hanh dong: Huy commit gan nhat nhung GIU NGUYEN code da sua trong Staging." -ForegroundColor Green
+    $confirm = Read-Host "Ban co muon tiep tuc? (y/N)"
     if ($confirm -eq "y" -or $confirm -eq "Y") {
         git reset --soft HEAD~1
-        Write-Host "[✓] Đã hoàn tác commit gần nhất (code vẫn an toàn)." -ForegroundColor Green
+        Write-Host "[OK] Da hoan tac commit gan nhat (code van an toan)." -ForegroundColor Green
     }
 }
 
 function Invoke-ResetHard {
-    Write-Host "`n[CẢNH BÁO NGUY HIỂM: git reset --hard HEAD~1]" -ForegroundColor Red
-    Write-Host "Hành động này sẽ XÓA BỎ HOÀN TOÀN commit gần nhất và MỌI THAY ĐỔI của nó!" -ForegroundColor Red
-    $confirm = Read-Host "Nhập 'yes' để xác nhận xóa"
+    Write-Host "`n[CANH BAO NGUY HIEM: git reset --hard HEAD~1]" -ForegroundColor Red
+    Write-Host "Hanh dong nay se XOA BO HOAN TOAN commit gan nhat va MOI THAY DOI cua no!" -ForegroundColor Red
+    $confirm = Read-Host "Nhap 'yes' de xac nhan xoa"
     if ($confirm -eq "yes") {
         git reset --hard HEAD~1
-        Write-Host "[✓] Đã hủy commit và xóa sạch thay đổi." -ForegroundColor Red
+        Write-Host "[OK] Da huy commit va xoa sach thay doi." -ForegroundColor Red
     } else {
-        Write-Host "[!] Đã hủy thao tác." -ForegroundColor Yellow
+        Write-Host "[!] Da huy thao tac." -ForegroundColor Yellow
     }
 }
 
 function Invoke-RestoreFile {
     git status -s
-    $file = Read-Host "`nNhập tên file muốn khôi phục về trạng thái cũ"
+    $file = Read-Host "`nNhap ten file muon khoi phuc ve trang thai cu"
     if ($file) {
         git restore $file
-        Write-Host "[✓] Đã hủy bỏ các thay đổi của: $file" -ForegroundColor Green
+        Write-Host "[OK] Da huy bo cac thay doi cua: $file" -ForegroundColor Green
     }
 }
 
 function Invoke-Stash {
-    $note = Read-Host "Nhập ghi chú cho bản stash (hoặc Enter)"
+    $note = Read-Host "Nhap ghi chu cho ban stash (hoac Enter)"
     if ($note) {
         git stash push -m $note
     } else {
         git stash
     }
-    Write-Host "[✓] Đã lưu tạm thời vào stash." -ForegroundColor Green
+    Write-Host "[OK] Da luu tam thoi vao stash." -ForegroundColor Green
 }
 
 function Invoke-StashPop {
@@ -219,21 +214,21 @@ function Invoke-StashPop {
 }
 
 function Invoke-StashList {
-    Show-Header "DANH SÁCH BẢN LƯU TẠM (STASH LIST)"
+    Show-Header "DANH SACH BAN LUU TAM (STASH LIST)"
     git stash list
 }
 
 function Invoke-QuickSync {
     param([string]$commitMsg)
     $branch = Get-CurrentBranch
-    Write-Host "`n=== ⚡ QUICK SYNC (ADD ALL + COMMIT + PUSH) ===" -ForegroundColor Magenta
+    Write-Host "`n=== DONG BO NHANH (ADD ALL + COMMIT + PUSH) ===" -ForegroundColor Magenta
 
     if (-not $commitMsg) {
-        $commitMsg = Read-Host "Nhập nội dung commit"
+        $commitMsg = Read-Host "Nhap noi dung commit"
     }
 
     if (-not $commitMsg) {
-        Write-Host "[!] Không được bỏ trống thông điệp commit." -ForegroundColor Red
+        Write-Host "[!] Khong duoc bo trong thong diep commit." -ForegroundColor Red
         return
     }
 
@@ -246,10 +241,9 @@ function Invoke-QuickSync {
     Write-Host "3/3: git push origin $branch" -ForegroundColor Yellow
     git push -u origin $branch
 
-    Write-Host "🎉 Hoàn tất đồng bộ code lên GitHub!" -ForegroundColor Green
+    Write-Host "Hoan tat dong bo code len GitHub!" -ForegroundColor Green
 }
 
-# --- Xử lý tham số truyền vào trực tiếp ---
 if ($Action -eq "sync" -or $Action -eq "push") {
     Invoke-QuickSync -commitMsg $Message
     exit
@@ -270,37 +264,35 @@ if ($Action -eq "sync" -or $Action -eq "push") {
     exit
 }
 
-# Danh sách menu options
 $menuItems = @(
-    "⚡ [QUICK SYNC] Add tất cả + Commit + Push lên GitHub",
-    "🔍 [STATUS]     git status - Xem trạng thái các file",
-    "📝 [DIFF]       git diff - Xem chi tiết dòng code thay đổi",
-    "➕ [ADD ALL]    git add . - Thêm tất cả file thay đổi",
-    "📄 [ADD FILE]   git add <file> - Thêm 1 file cụ thể",
-    "💾 [COMMIT]     git commit -m - Tạo commit mới kèm mô tả",
-    "✏️ [AMEND]      git commit --amend - Sửa commit gần nhất",
-    "🚀 [PUSH]       git push - Đẩy commit lên GitHub",
-    "📥 [PULL]       git pull - Tải & gộp code mới từ GitHub",
-    "📡 [FETCH]      git fetch - Chỉ tải thông tin mới từ GitHub",
-    "🔗 [REMOTE]     git remote add/set origin - Đặt URL GitHub",
-    "🌿 [BRANCH-LS]  git branch - Liệt kê tất cả nhánh",
-    "🌱 [BRANCH-NEW] git branch <tên> - Tạo nhánh mới",
-    "🔀 [SWITCH]     git switch - Chuyển sang nhánh khác",
-    "✨ [SW-NEW]     git switch -c - Tạo & chuyển nhánh ngay",
-    "🧩 [MERGE]      git merge - Gộp nhánh khác vào nhánh hiện tại",
-    "🗑️ [DEL-BRANCH] git branch -d - Xóa nhánh local",
-    "📜 [LOG-SHORT]  git log --oneline - Xem lịch sử rút gọn",
-    "📖 [LOG-FULL]   git log - Xem lịch sử chi tiết",
-    "↩️ [UNDO-SOFT]  git reset --soft HEAD~1 - Hủy commit (giữ code)",
-    "⚠️ [UNDO-HARD]  git reset --hard HEAD~1 - Hủy commit & xóa code",
-    "🔄 [RESTORE]    git restore <file> - Khôi phục 1 file",
-    "📦 [STASH]      git stash - Lưu tạm code dở dang",
-    "📤 [STASH-POP]  git stash pop - Lấy lại code lưu tạm",
-    "📋 [STASH-LIST] git stash list - Xem danh sách stash",
-    "❌ [THOÁT]      Thoát chương trình"
+    "[QUICK SYNC]  Add tat ca + Commit + Push len GitHub",
+    "[STATUS]      git status - Xem trang thai cac file",
+    "[DIFF]        git diff - Xem chi tiet code thay doi",
+    "[ADD ALL]     git add . - Them tat ca file thay doi",
+    "[ADD FILE]    git add <file> - Them 1 file cu the",
+    "[COMMIT]      git commit -m - Tao commit moi kem mo ta",
+    "[AMEND]       git commit --amend - Sua commit gan nhat",
+    "[PUSH]        git push - Day commit len GitHub",
+    "[PULL]        git pull - Tai va gop code moi tu GitHub",
+    "[FETCH]       git fetch - Chi tai thong tin moi tu GitHub",
+    "[REMOTE]      git remote add/set origin - Dat URL GitHub",
+    "[BRANCH-LS]   git branch - Liet ke tat ca nhanh",
+    "[BRANCH-NEW]  git branch <ten> - Tao nhanh moi",
+    "[SWITCH]      git switch - Chuyen sang nhanh khac",
+    "[SW-NEW]      git switch -c - Tao va chuyen nhanh ngay",
+    "[MERGE]       git merge - Gop nhanh khac vao nhanh hien tai",
+    "[DEL-BRANCH]  git branch -d - Xoa nhanh local",
+    "[LOG-SHORT]   git log --oneline - Xem lich su rut gon",
+    "[LOG-FULL]    git log - Xem lich su chi tiet",
+    "[UNDO-SOFT]   git reset --soft HEAD~1 - Huy commit (giu code)",
+    "[UNDO-HARD]   git reset --hard HEAD~1 - Huy commit va xoa code",
+    "[RESTORE]     git restore <file> - Khoi phuc 1 file",
+    "[STASH]       git stash - Luu tam code do dang",
+    "[STASH-POP]   git stash pop - Lay lai code luu tam",
+    "[STASH-LIST]  git stash list - Xem danh sach stash",
+    "[THOAT]       Thoat chuong trinh"
 )
 
-# Hàm điều khiển bằng phím mũi tên (Arrow Navigation)
 function Select-ArrowMenu {
     param([string[]]$Items)
 
@@ -315,13 +307,13 @@ function Select-ArrowMenu {
 
     if (-not $canUseKeys) {
         Write-Host "`n==============================================================" -ForegroundColor Blue
-        Write-Host "             🌾 CROP COOP — GIT WORKFLOW HELPER               " -ForegroundColor Green
-        Write-Host " Nhánh hiện tại: $branch" -ForegroundColor Yellow
+        Write-Host "             CROP COOP - GIT WORKFLOW HELPER                  " -ForegroundColor Green
+        Write-Host " Nhanh hien tai: $branch" -ForegroundColor Yellow
         Write-Host "==============================================================" -ForegroundColor Blue
         for ($i = 0; $i -lt $count; $i++) {
             Write-Host (" {0,2}. {1}" -f ($i + 1), $Items[$i])
         }
-        $pick = Read-Host "`n👉 Nhập số lựa chọn của bạn (1-$count)"
+        $pick = Read-Host "`nNhap so lua chon cua ban (1-$count)"
         if ($pick -match '^\d+$') {
             return [int]$pick - 1
         }
@@ -333,20 +325,20 @@ function Select-ArrowMenu {
     while ($true) {
         Clear-Host
         Write-Host "======================================================================" -ForegroundColor Blue
-        Write-Host "                  🌾 CROP COOP — GIT WORKFLOW HELPER                  " -ForegroundColor Green
+        Write-Host "                  CROP COOP - GIT WORKFLOW HELPER                     " -ForegroundColor Green
         Write-Host "======================================================================" -ForegroundColor Blue
-        Write-Host " Nhánh hiện tại: " -NoNewline
+        Write-Host " Nhanh hien tai: " -NoNewline
         Write-Host "$branch" -ForegroundColor Yellow -NoNewline
-        Write-Host "  |  Dùng phím " -NoNewline
-        Write-Host "↑ / ↓" -ForegroundColor Cyan -NoNewline
-        Write-Host " để chọn, nhấn " -NoNewline
+        Write-Host "  |  Dung phim " -NoNewline
+        Write-Host "Mui Ten Len / Xuong" -ForegroundColor Cyan -NoNewline
+        Write-Host ", nhan " -NoNewline
         Write-Host "[ENTER]" -ForegroundColor Green -NoNewline
-        Write-Host " để chạy"
+        Write-Host " de chay"
         Write-Host "----------------------------------------------------------------------" -ForegroundColor Blue
 
         for ($i = 0; $i -lt $count; $i++) {
             if ($i -eq $index) {
-                Write-Host " 👉 " -NoNewline -ForegroundColor Green
+                Write-Host " >> " -NoNewline -ForegroundColor Green
                 Write-Host $Items[$i] -BackgroundColor DarkGreen -ForegroundColor White
             } else {
                 Write-Host "    $($Items[$i])" -ForegroundColor Gray
@@ -374,7 +366,6 @@ function Select-ArrowMenu {
     }
 }
 
-# Vòng lặp chính
 while ($true) {
     $selectedIndex = Select-ArrowMenu -Items $menuItems
 
@@ -404,10 +395,10 @@ while ($true) {
         22 { Invoke-Stash }
         23 { Invoke-StashPop }
         24 { Invoke-StashList }
-        25 { Write-Host "`nTạm biệt! Chúc bạn làm việc hiệu quả.`n" -ForegroundColor Green; exit }
+        25 { Write-Host "`nTam biet! Chuc ban lam viec hieu qua.`n" -ForegroundColor Green; exit }
         default { exit }
     }
 
     Write-Host ""
-    Read-Host "Nhấn [Enter] để quay lại menu danh sách..."
+    Read-Host "Nhan [Enter] de quay lai menu danh sach..."
 }
