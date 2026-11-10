@@ -1,18 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    CROP COOP — Git Workflow Automation Script (PowerShell)
-    Tối ưu hóa các thao tác Git thường dùng.
-
-.DESCRIPTION
-    Chạy tương tác qua Menu:
-        .\git-flow.ps1
-    Hoặc chạy nhanh 1 lệnh:
-        .\git-flow.ps1 sync "nội dung commit"
-        .\git-flow.ps1 status
-        .\git-flow.ps1 diff
-        .\git-flow.ps1 log
-        .\git-flow.ps1 stash
-        .\git-flow.ps1 pop
+    CROP COOP — Git Workflow Automation Script (Interactive Arrow Menu)
 #>
 
 param(
@@ -20,7 +8,6 @@ param(
     [string]$Message
 )
 
-# Thiết lập bảng mã UTF-8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 function Get-CurrentBranch {
@@ -54,6 +41,13 @@ function Invoke-AddFile {
         git add $file
         Write-Host "[✓] Đã add: $file" -ForegroundColor Green
     }
+}
+
+function Invoke-AddAll {
+    Show-Header "THÊM TẤT CẢ FILE THAY ĐỔI (git add .)"
+    git add .
+    Write-Host "[✓] Đã add tất cả file thay đổi vào Staging." -ForegroundColor Green
+    git status -s
 }
 
 function Invoke-Commit {
@@ -276,88 +270,144 @@ if ($Action -eq "sync" -or $Action -eq "push") {
     exit
 }
 
-# --- Vòng lặp Menu tương tác ---
-while ($true) {
+# Danh sách menu options
+$menuItems = @(
+    "⚡ [QUICK SYNC] Add tất cả + Commit + Push lên GitHub",
+    "🔍 [STATUS]     git status - Xem trạng thái các file",
+    "📝 [DIFF]       git diff - Xem chi tiết dòng code thay đổi",
+    "➕ [ADD ALL]    git add . - Thêm tất cả file thay đổi",
+    "📄 [ADD FILE]   git add <file> - Thêm 1 file cụ thể",
+    "💾 [COMMIT]     git commit -m - Tạo commit mới kèm mô tả",
+    "✏️ [AMEND]      git commit --amend - Sửa commit gần nhất",
+    "🚀 [PUSH]       git push - Đẩy commit lên GitHub",
+    "📥 [PULL]       git pull - Tải & gộp code mới từ GitHub",
+    "📡 [FETCH]      git fetch - Chỉ tải thông tin mới từ GitHub",
+    "🔗 [REMOTE]     git remote add/set origin - Đặt URL GitHub",
+    "🌿 [BRANCH-LS]  git branch - Liệt kê tất cả nhánh",
+    "🌱 [BRANCH-NEW] git branch <tên> - Tạo nhánh mới",
+    "🔀 [SWITCH]     git switch - Chuyển sang nhánh khác",
+    "✨ [SW-NEW]     git switch -c - Tạo & chuyển nhánh ngay",
+    "🧩 [MERGE]      git merge - Gộp nhánh khác vào nhánh hiện tại",
+    "🗑️ [DEL-BRANCH] git branch -d - Xóa nhánh local",
+    "📜 [LOG-SHORT]  git log --oneline - Xem lịch sử rút gọn",
+    "📖 [LOG-FULL]   git log - Xem lịch sử chi tiết",
+    "↩️ [UNDO-SOFT]  git reset --soft HEAD~1 - Hủy commit (giữ code)",
+    "⚠️ [UNDO-HARD]  git reset --hard HEAD~1 - Hủy commit & xóa code",
+    "🔄 [RESTORE]    git restore <file> - Khôi phục 1 file",
+    "📦 [STASH]      git stash - Lưu tạm code dở dang",
+    "📤 [STASH-POP]  git stash pop - Lấy lại code lưu tạm",
+    "📋 [STASH-LIST] git stash list - Xem danh sách stash",
+    "❌ [THOÁT]      Thoát chương trình"
+)
+
+# Hàm điều khiển bằng phím mũi tên (Arrow Navigation)
+function Select-ArrowMenu {
+    param([string[]]$Items)
+
     $branch = Get-CurrentBranch
-    Write-Host "`n=================================================================" -ForegroundColor Blue
-    Write-Host "               🌾 CROP COOP — GIT WORKFLOW HELPER               " -ForegroundColor Green
-    Write-Host "=================================================================" -ForegroundColor Blue
-    Write-Host " Nhánh hiện tại: $branch" -ForegroundColor Yellow
-    Write-Host "-----------------------------------------------------------------" -ForegroundColor Blue
-    Write-Host " ⚡ ĐỒNG BỘ NHANH:" -ForegroundColor White
-    Write-Host "   1. Quick Sync (Add tất cả + Commit + Push lên GitHub)" -ForegroundColor Green
-    Write-Host ""
-    Write-Host " 1. TRẠNG THÁI & SO SÁNH:" -ForegroundColor White
-    Write-Host "   2. git status (Xem trạng thái các file)" -ForegroundColor Cyan
-    Write-Host "   3. git diff   (Xem chi tiết code thay đổi)" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host " 2. THÊM FILE & COMMIT:" -ForegroundColor White
-    Write-Host "   4. git add <file> (Thêm 1 file cụ thể)" -ForegroundColor Cyan
-    Write-Host "   5. git add .      (Thêm toàn bộ file thay đổi)" -ForegroundColor Cyan
-    Write-Host "   6. git commit -m  (Tạo commit mới)" -ForegroundColor Cyan
-    Write-Host "   7. git commit --amend (Sửa lại commit gần nhất)" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host " 3. ĐỒNG BỘ VỚI GITHUB:" -ForegroundColor White
-    Write-Host "   8. git remote add origin (Kết nối URL kho GitHub)" -ForegroundColor Cyan
-    Write-Host "   9. git push   (Đẩy code lên GitHub)" -ForegroundColor Cyan
-    Write-Host "  10. git pull   (Tải & gộp code mới về)" -ForegroundColor Cyan
-    Write-Host "  11. git fetch  (Chỉ tải thông tin mới từ GitHub)" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host " 4. QUẢN LÝ NHÁNH (BRANCH):" -ForegroundColor White
-    Write-Host "  12. git branch (Liệt kê các nhánh)" -ForegroundColor Cyan
-    Write-Host "  13. Tạo nhánh mới" -ForegroundColor Cyan
-    Write-Host "  14. Chuyển nhánh (git switch)" -ForegroundColor Cyan
-    Write-Host "  15. Tạo & chuyển sang nhánh mới ngay (git switch -c)" -ForegroundColor Cyan
-    Write-Host "  16. Gộp nhánh (git merge)" -ForegroundColor Cyan
-    Write-Host "  17. Xóa nhánh (git branch -d)" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host " 5. LỊCH SỬ & HOÀN TÁC (HISTORY & UNDO):" -ForegroundColor White
-    Write-Host "  18. git log --oneline (Xem lịch sử rút gọn)" -ForegroundColor Cyan
-    Write-Host "  19. git log chi tiết" -ForegroundColor Cyan
-    Write-Host "  20. git reset --soft (Hủy commit, giữ lại code)" -ForegroundColor Cyan
-    Write-Host "  21. git reset --hard (HỦY COMMIT & XÓA SẠCH CODE - Nguy hiểm)" -ForegroundColor Red
-    Write-Host "  22. Khôi phục 1 file về trạng thái cũ" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host " 6. BỘ NHỚ TẠM (STASH):" -ForegroundColor White
-    Write-Host "  23. git stash (Lưu tạm code đang làm dở)" -ForegroundColor Cyan
-    Write-Host "  24. git stash pop (Lấy lại code đã lưu tạm)" -ForegroundColor Cyan
-    Write-Host "  25. git stash list (Xem danh sách stash)" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "   0. Thoát" -ForegroundColor Red
-    Write-Host "=================================================================" -ForegroundColor Blue
+    $index = 0
+    $count = $Items.Length
 
-    $choice = Read-Host "👉 Nhập lựa chọn của bạn [0-25]"
+    $canUseKeys = $false
+    try {
+        if (-not [Console]::IsInputRedirected) { $canUseKeys = $true }
+    } catch {}
 
-    switch ($choice) {
-        "1"  { Invoke-QuickSync }
-        "2"  { Invoke-Status }
-        "3"  { Invoke-Diff }
-        "4"  { Invoke-AddFile }
-        "5"  { git add .; Write-Host "[✓] Đã add tất cả file thay đổi." -ForegroundColor Green }
-        "6"  { Invoke-Commit }
-        "7"  { Invoke-CommitAmend }
-        "8"  { Invoke-RemoteAdd }
-        "9"  { Invoke-Push }
-        "10" { Invoke-Pull }
-        "11" { Invoke-Fetch }
-        "12" { Invoke-BranchList }
-        "13" { Invoke-BranchCreate }
-        "14" { Invoke-BranchSwitch }
-        "15" { Invoke-BranchCreateAndSwitch }
-        "16" { Invoke-BranchMerge }
-        "17" { Invoke-BranchDelete }
-        "18" { Invoke-LogOneline }
-        "19" { Invoke-LogFull }
-        "20" { Invoke-ResetSoft }
-        "21" { Invoke-ResetHard }
-        "22" { Invoke-RestoreFile }
-        "23" { Invoke-Stash }
-        "24" { Invoke-StashPop }
-        "25" { Invoke-StashList }
-        "0"  { Write-Host "Tạm biệt! Chúc bạn làm việc hiệu quả." -ForegroundColor Green; exit }
-        default { Write-Host "[!] Lựa chọn không hợp lệ." -ForegroundColor Red }
+    if (-not $canUseKeys) {
+        Write-Host "`n==============================================================" -ForegroundColor Blue
+        Write-Host "             🌾 CROP COOP — GIT WORKFLOW HELPER               " -ForegroundColor Green
+        Write-Host " Nhánh hiện tại: $branch" -ForegroundColor Yellow
+        Write-Host "==============================================================" -ForegroundColor Blue
+        for ($i = 0; $i -lt $count; $i++) {
+            Write-Host (" {0,2}. {1}" -f ($i + 1), $Items[$i])
+        }
+        $pick = Read-Host "`n👉 Nhập số lựa chọn của bạn (1-$count)"
+        if ($pick -match '^\d+$') {
+            return [int]$pick - 1
+        }
+        return $count - 1
+    }
+
+    try { [Console]::CursorVisible = $false } catch {}
+
+    while ($true) {
+        Clear-Host
+        Write-Host "======================================================================" -ForegroundColor Blue
+        Write-Host "                  🌾 CROP COOP — GIT WORKFLOW HELPER                  " -ForegroundColor Green
+        Write-Host "======================================================================" -ForegroundColor Blue
+        Write-Host " Nhánh hiện tại: " -NoNewline
+        Write-Host "$branch" -ForegroundColor Yellow -NoNewline
+        Write-Host "  |  Dùng phím " -NoNewline
+        Write-Host "↑ / ↓" -ForegroundColor Cyan -NoNewline
+        Write-Host " để chọn, nhấn " -NoNewline
+        Write-Host "[ENTER]" -ForegroundColor Green -NoNewline
+        Write-Host " để chạy"
+        Write-Host "----------------------------------------------------------------------" -ForegroundColor Blue
+
+        for ($i = 0; $i -lt $count; $i++) {
+            if ($i -eq $index) {
+                Write-Host " 👉 " -NoNewline -ForegroundColor Green
+                Write-Host $Items[$i] -BackgroundColor DarkGreen -ForegroundColor White
+            } else {
+                Write-Host "    $($Items[$i])" -ForegroundColor Gray
+            }
+        }
+        Write-Host "======================================================================" -ForegroundColor Blue
+
+        $key = [Console]::ReadKey($true)
+        switch ($key.Key) {
+            "UpArrow" {
+                $index = ($index - 1 + $count) % $count
+            }
+            "DownArrow" {
+                $index = ($index + 1) % $count
+            }
+            "Enter" {
+                try { [Console]::CursorVisible = $true } catch {}
+                return $index
+            }
+            "Escape" {
+                try { [Console]::CursorVisible = $true } catch {}
+                return ($count - 1)
+            }
+        }
+    }
+}
+
+# Vòng lặp chính
+while ($true) {
+    $selectedIndex = Select-ArrowMenu -Items $menuItems
+
+    switch ($selectedIndex) {
+        0  { Invoke-QuickSync }
+        1  { Invoke-Status }
+        2  { Invoke-Diff }
+        3  { Invoke-AddAll }
+        4  { Invoke-AddFile }
+        5  { Invoke-Commit }
+        6  { Invoke-CommitAmend }
+        7  { Invoke-Push }
+        8  { Invoke-Pull }
+        9  { Invoke-Fetch }
+        10 { Invoke-RemoteAdd }
+        11 { Invoke-BranchList }
+        12 { Invoke-BranchCreate }
+        13 { Invoke-BranchSwitch }
+        14 { Invoke-BranchCreateAndSwitch }
+        15 { Invoke-BranchMerge }
+        16 { Invoke-BranchDelete }
+        17 { Invoke-LogOneline }
+        18 { Invoke-LogFull }
+        19 { Invoke-ResetSoft }
+        20 { Invoke-ResetHard }
+        21 { Invoke-RestoreFile }
+        22 { Invoke-Stash }
+        23 { Invoke-StashPop }
+        24 { Invoke-StashList }
+        25 { Write-Host "`nTạm biệt! Chúc bạn làm việc hiệu quả.`n" -ForegroundColor Green; exit }
+        default { exit }
     }
 
     Write-Host ""
-    Read-Host "Nhấn [Enter] để quay lại menu chính..."
+    Read-Host "Nhấn [Enter] để quay lại menu danh sách..."
 }
