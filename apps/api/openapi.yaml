@@ -1,0 +1,2441 @@
+openapi: 3.0.3
+info:
+  title: CROP COOP API
+  version: 1.0.0
+  description: |
+    REST API cho nền tảng quản lý hợp tác xã và truy xuất nguồn gốc.
+    Farmer access is restricted to lots assigned through farmer_lots.
+
+    Business flow:
+    Create season → add lots and assign farmers → farmers create diary entries online/offline
+    → sync offline entries → technician confirms diary → recalculate quarantine → record harvest
+    and quality tests → check QR conditions → generate pending QR → coop admin approves and locks
+    related diaries → customer scans the public trace passport.
+servers:
+  - url: https://api.cropcoop.vn/v1
+    description: Production base URL theo đặc tả
+  - url: http://localhost:3000/api/v1
+    description: Local development
+tags:
+  - name: Auth
+  - name: Users
+  - name: Zones & Lots
+  - name: Seasons
+  - name: Diary
+  - name: Quarantine
+  - name: Inventory
+  - name: Harvest & Quality
+  - name: QR Codes
+  - name: Public Portal
+  - name: Orders
+  - name: Reports
+  - name: System Admin
+security:
+  - bearerAuth: []
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      security: []
+      summary: Đăng nhập
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email, example: farmer@htx.vn }
+                password: { type: string, format: password }
+      responses:
+        '200':
+          description: Đăng nhập thành công; refresh token được gửi bằng HttpOnly cookie.
+          headers:
+            Set-Cookie:
+              schema: { type: string, example: refreshToken=...; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accessToken, expiresIn, user]
+                properties:
+                  accessToken: { type: string }
+                  tokenType: { type: string, example: Bearer }
+                  expiresIn: { type: integer, example: 900 }
+                  user: { $ref: '#/components/schemas/UserSession' }
+        '401': { $ref: '#/components/responses/InvalidCredentials' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshAccessToken
+      security: []
+      summary: Cấp access token mới bằng refresh cookie
+      responses:
+        '200':
+          description: Token mới; refresh token được xoay vòng trong HttpOnly cookie.
+          headers:
+            Set-Cookie:
+              schema: { type: string, example: refreshToken=...; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken: { type: string }
+                  tokenType: { type: string, example: Bearer }
+                  expiresIn: { type: integer, example: 900 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Thu hồi refresh token hiện tại và xóa cookie
+      responses:
+        '200': { description: Đã đăng xuất }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/me:
+    get:
+      tags: [Auth]
+      operationId: getCurrentUser
+      summary: Lấy hồ sơ, vai trò và quyền của người dùng hiện tại
+      responses:
+        '200':
+          description: Hồ sơ người dùng hiện tại
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserSession' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/change-password:
+    patch:
+      tags: [Auth]
+      operationId: changePassword
+      summary: Đổi mật khẩu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string, format: password }
+                newPassword: { type: string, format: password, minLength: 12 }
+      responses:
+        '200': { description: Đổi mật khẩu thành công }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /users:
+    get:
+      tags: [Users]
+      operationId: listUsers
+      summary: Danh sách thành viên (COOP_ADMIN trở lên)
+      parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/Limit' }]
+      responses:
+        '200':
+          description: Danh sách phân trang
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedUsers' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Users]
+      operationId: createUser
+      summary: Tạo tài khoản (SUPER_ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, fullName, password]
+              properties:
+                email: { type: string, format: email }
+                fullName: { type: string, maxLength: 150 }
+                phone: { type: string }
+                password: { type: string, format: password, minLength: 12 }
+                roleCodes: { type: array, items: { $ref: '#/components/schemas/RoleCode' } }
+      responses:
+        '201':
+          description: Tài khoản đã tạo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /users/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Users]
+      operationId: getUser
+      summary: Chi tiết thành viên (COOP_ADMIN trở lên hoặc chính mình)
+      responses:
+        '200':
+          description: Hồ sơ thành viên
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Users]
+      operationId: updateUser
+      summary: Cập nhật hồ sơ thành viên
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fullName: { type: string, maxLength: 150 }
+                phone: { type: string, nullable: true }
+                isActive: { type: boolean, description: Chỉ SUPER_ADMIN được thay đổi }
+      responses:
+        '200':
+          description: Hồ sơ đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Users]
+      operationId: deactivateUser
+      summary: Vô hiệu hóa tài khoản (soft delete, SUPER_ADMIN)
+      responses:
+        '204': { description: Tài khoản đã vô hiệu hóa }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /users/{id}/roles:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      tags: [Users]
+      operationId: assignUserRole
+      summary: Gán vai trò (SUPER_ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [roleId]
+              properties:
+                roleId: { type: string, format: uuid }
+      responses:
+        '201': { description: Vai trò đã được gán }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /users/{id}/roles/{roleId}:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+      - name: roleId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [Users]
+      operationId: removeUserRole
+      summary: Gỡ vai trò (SUPER_ADMIN)
+      responses:
+        '204': { description: Vai trò đã được gỡ }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /users/{id}/lots:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Users]
+      operationId: listUserLots
+      summary: Danh sách lô được phân công; FARMER chỉ được xem dữ liệu của mình
+      responses:
+        '200':
+          description: Các lô đang được phân công
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Lot' } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /zones:
+    get:
+      tags: [Zones & Lots]
+      operationId: listZones
+      parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/Limit' }]
+      responses:
+        '200':
+          description: Danh sách vùng
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedZones' }
+    post:
+      tags: [Zones & Lots]
+      operationId: createZone
+      summary: Tạo vùng (TECHNICIAN trở lên)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name]
+              properties:
+                code: { type: string }
+                name: { type: string }
+                description: { type: string }
+                boundary: { type: object, description: GeoJSON Polygon/MultiPolygon }
+                province: { type: string }
+                district: { type: string }
+                commune: { type: string }
+      responses:
+        '201':
+          description: Vùng đã tạo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Zone' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /zones/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Zones & Lots]
+      operationId: getZone
+      responses:
+        '200':
+          description: Chi tiết vùng
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Zone' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Zones & Lots]
+      operationId: updateZone
+      summary: Cập nhật vùng (TECHNICIAN trở lên)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ZonePatch' }
+      responses:
+        '200':
+          description: Vùng đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Zone' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /zones/{id}/lots:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Zones & Lots]
+      operationId: listZoneLots
+      parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/Limit' }]
+      responses:
+        '200':
+          description: Lô thuộc vùng; FARMER chỉ thấy lô được phân công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedLots' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /lots:
+    get:
+      tags: [Zones & Lots]
+      operationId: listLots
+      summary: Danh sách lô; phạm vi FARMER tự giới hạn theo farmer_lots
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - name: zoneId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: active
+          in: query
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Danh sách lô sau khi áp dụng phạm vi truy cập
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedLots' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Zones & Lots]
+      operationId: createLot
+      summary: Tạo lô (TECHNICIAN trở lên)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [zoneId, lotCode, name]
+              properties:
+                zoneId: { type: string, format: uuid }
+                lotCode: { type: string }
+                name: { type: string }
+                centerLat: { type: number, minimum: -90, maximum: 90 }
+                centerLng: { type: number, minimum: -180, maximum: 180 }
+                areaM2: { type: number, minimum: 0, exclusiveMinimum: true }
+                soilType: { type: string }
+                notes: { type: string }
+      responses:
+        '201':
+          description: Lô đã tạo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Lot' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /lots/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Zones & Lots]
+      operationId: getLot
+      summary: Chi tiết lô; FARMER chỉ truy cập lô được phân công
+      responses:
+        '200':
+          description: Thông tin lô
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Lot' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Zones & Lots]
+      operationId: updateLot
+      summary: Cập nhật lô (TECHNICIAN trở lên)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                centerLat: { type: number, minimum: -90, maximum: 90, nullable: true }
+                centerLng: { type: number, minimum: -180, maximum: 180, nullable: true }
+                areaM2: { type: number, minimum: 0, exclusiveMinimum: true, nullable: true }
+                soilType: { type: string, nullable: true }
+                notes: { type: string, nullable: true }
+                isActive: { type: boolean }
+      responses:
+        '200':
+          description: Lô đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Lot' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /lots/{id}/assign-farmer:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      tags: [Zones & Lots]
+      operationId: assignFarmerToLot
+      summary: Phân công nông dân cho lô (COOP_ADMIN trở lên)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [farmerId, startDate]
+              properties:
+                farmerId: { type: string, format: uuid }
+                startDate: { type: string, format: date }
+                endDate: { type: string, format: date, nullable: true }
+                ownershipType: { type: string, enum: [OWN, LEASE, CONTRACT] }
+                notes: { type: string }
+      responses:
+        '201': { description: Đã phân công }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /lots/{id}/assign-farmer/{farmerId}:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+      - name: farmerId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [Zones & Lots]
+      operationId: unassignFarmerFromLot
+      summary: Kết thúc phân công hiện tại (COOP_ADMIN trở lên)
+      responses:
+        '204': { description: Phân công đã kết thúc }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /seasons:
+    get:
+      tags: [Seasons]
+      operationId: listSeasons
+      summary: Danh sách mùa vụ cho người dùng nội bộ
+      parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/Limit' }]
+      responses:
+        '200':
+          description: Danh sách mùa vụ phân trang
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedSeasons' }
+    post:
+      tags: [Seasons]
+      operationId: createSeason
+      summary: Tạo mùa vụ (TECHNICIAN trở lên)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SeasonCreate' }
+      responses:
+        '201':
+          description: Mùa vụ đã tạo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Season' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /seasons/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Seasons]
+      operationId: getSeason
+      responses:
+        '200':
+          description: Chi tiết mùa vụ
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Season' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Seasons]
+      operationId: updateSeason
+      summary: Cập nhật mùa vụ (TECHNICIAN trở lên)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SeasonPatch' }
+      responses:
+        '200':
+          description: Mùa vụ đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Season' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /seasons/{id}/lots:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      tags: [Seasons]
+      operationId: addLotToSeason
+      summary: Thêm lô và phân công nông dân vào mùa vụ (TECHNICIAN trở lên)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lotId, assignedFarmerId]
+              properties:
+                lotId: { type: string, format: uuid }
+                assignedFarmerId: { type: string, format: uuid }
+                plannedSowDate: { type: string, format: date }
+                plannedHarvestDate: { type: string, format: date }
+                materialQuotaKg: { type: number, minimum: 0 }
+      responses:
+        '201':
+          description: Lô mùa vụ đã được tạo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SeasonLot' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+  /seasons/{id}/lots/{seasonLotId}:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+      - name: seasonLotId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [Seasons]
+      operationId: removeLotFromSeason
+      summary: Gỡ lô khỏi mùa vụ nếu không còn dữ liệu phụ thuộc
+      responses:
+        '204': { description: Đã gỡ lô khỏi mùa vụ }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /seasons/{id}/dashboard:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Seasons]
+      operationId: getSeasonDashboard
+      summary: Tổng quan tiến độ mùa vụ
+      responses:
+        '200':
+          description: Chỉ số tổng hợp mùa vụ
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SeasonDashboard' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /season-lots/{slId}/diary:
+    parameters:
+      - name: slId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Diary]
+      operationId: listSeasonLotDiary
+      summary: Danh sách nhật ký; FARMER chỉ xem các lô được phân công
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/DiaryStatus' }
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Danh sách nhật ký
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedDiaries' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Diary]
+      operationId: createSeasonLotDiary
+      summary: Tạo nhật ký, hỗ trợ retry an toàn bằng clientTempId
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: UUID ổn định do client tạo cho mỗi bản ghi offline; có thể thay bằng clientTempId trong payload.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DiaryCreate' }
+      responses:
+        '201':
+          description: Nhật ký đã tạo; kèm trạng thái cách ly mới nếu có áp dụng thuốc
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiaryCreateResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+  /season-lots/{slId}/diary/{id}:
+    parameters:
+      - name: slId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Diary]
+      operationId: getSeasonLotDiary
+      summary: Chi tiết nhật ký trong phạm vi được phép
+      responses:
+        '200':
+          description: Nhật ký
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiaryEntry' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Diary]
+      operationId: updateSeasonLotDiary
+      summary: Chỉ sửa nhật ký DRAFT hoặc REJECTED
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DiaryPatch' }
+      responses:
+        '200':
+          description: Nhật ký đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiaryEntry' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+    delete:
+      tags: [Diary]
+      operationId: deleteSeasonLotDiary
+      summary: Chỉ xóa nhật ký DRAFT
+      responses:
+        '204': { description: Nhật ký đã xóa }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /season-lots/{slId}/diary/{id}/submit:
+    parameters:
+      - name: slId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Diary]
+      operationId: submitSeasonLotDiary
+      summary: Nông dân gửi nhật ký để cán bộ kỹ thuật xác nhận
+      responses:
+        '200':
+          description: Nhật ký đã chuyển sang SUBMITTED
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiaryEntry' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /season-lots/{slId}/diary/{id}/confirm:
+    parameters:
+      - name: slId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Diary]
+      operationId: confirmSeasonLotDiary
+      summary: Xác nhận nhật ký (TECHNICIAN trở lên)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note: { type: string }
+                isPublic: { type: boolean, default: false, description: Cán bộ quyết định có cho phép hiển thị nội dung nhật ký này trên hộ chiếu công khai hay không }
+      responses:
+        '200':
+          description: Nhật ký đã xác nhận
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiaryConfirmation' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Server đã tính lại quarantine; tải trạng thái mới rồi gửi lại yêu cầu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/Error' }
+                  - type: object
+                    properties:
+                      code: { type: string, example: QUARANTINE_RECALCULATED }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+  /season-lots/{slId}/diary/{id}/reject:
+    parameters:
+      - name: slId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Diary]
+      operationId: rejectSeasonLotDiary
+      summary: Từ chối nhật ký (TECHNICIAN trở lên)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1 }
+      responses:
+        '200':
+          description: Nhật ký đã từ chối
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiaryEntry' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /diary/sync:
+    post:
+      tags: [Diary]
+      operationId: syncDiaryEntries
+      summary: Đồng bộ hàng loạt nhật ký offline (FARMER)
+      description: Mỗi entry được xử lý idempotently theo clientTempId; lỗi một entry không hủy kết quả các entry khác. Đồng bộ chỉ tạo nhật ký DRAFT, không tự nộp.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DiarySyncRequest' }
+      responses:
+        '200':
+          description: Trạng thái đồng bộ theo từng entry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiarySyncResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /season-lots/{slId}/quarantine:
+    parameters:
+      - name: slId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Quarantine]
+      operationId: getQuarantineStatus
+      summary: Tính và trả trạng thái cách ly hiện tại của lô trong mùa vụ
+      description: |
+        safeDateToHarvest được tính theo ngày sử dụng thuốc BVTV cuối cùng cộng thời gian cách ly
+        áp dụng cho lần sử dụng đó. Trạng thái DANGER nếu hôm nay trước ngày an toàn, WARNING nếu
+        còn tối đa 3 ngày, SAFE nếu đã đến hoặc qua ngày an toàn; NOT_APPLIED nếu chưa dùng thuốc.
+      responses:
+        '200':
+          description: Trạng thái và dữ liệu giải thích phép tính
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuarantineResult' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /season-lots/{slId}/quarantine/recalc:
+    parameters:
+      - name: slId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Quarantine]
+      operationId: recomputeQuarantineStatus
+      summary: Tính lại và lưu trạng thái (TECHNICIAN trở lên)
+      responses:
+        '200':
+          description: Kết quả tính lại
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuarantineResult' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /quarantine/alerts:
+    get:
+      tags: [Quarantine]
+      operationId: listQuarantineAlerts
+      summary: Dashboard cảnh báo cách ly toàn HTX (COOP_ADMIN trở lên)
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - name: status
+          in: query
+          schema: { type: string, enum: [DANGER, WARNING, SAFE, NOT_APPLIED] }
+      responses:
+        '200':
+          description: Tổng hợp số lượng và danh sách lô theo trạng thái cách ly
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuarantineAlerts' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /materials:
+    get:
+      tags: [Inventory]
+      operationId: listMaterials
+      summary: Danh sách vật tư (ACCOUNTANT trở lên)
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - name: category
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Danh mục vật tư
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedMaterials' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Inventory]
+      operationId: createMaterial
+      summary: Thêm vật tư (ACCOUNTANT trở lên)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MaterialWrite' }
+      responses:
+        '201':
+          description: Vật tư đã tạo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Material' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /materials/low-stock:
+    get:
+      tags: [Inventory]
+      operationId: listLowStockMaterials
+      summary: Danh sách vật tư dưới ngưỡng tồn tối thiểu (ACCOUNTANT trở lên)
+      responses:
+        '200':
+          description: Vật tư có tồn kho thấp
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Material' } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /materials/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Inventory]
+      operationId: getMaterial
+      responses:
+        '200':
+          description: Chi tiết vật tư
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Material' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Inventory]
+      operationId: updateMaterial
+      summary: Cập nhật danh mục vật tư (ACCOUNTANT trở lên)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MaterialPatch' }
+      responses:
+        '200':
+          description: Vật tư đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Material' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /inventory/import:
+    post:
+      tags: [Inventory]
+      operationId: importInventory
+      summary: Nhập kho và ghi giao dịch (ACCOUNTANT trở lên)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InventoryMovementWrite' }
+      responses:
+        '201':
+          description: Đã ghi nhận nhập kho
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryTransaction' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /inventory/export:
+    post:
+      tags: [Inventory]
+      operationId: exportInventory
+      summary: Xuất kho hoặc cấp phát vật tư (ACCOUNTANT trở lên)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InventoryMovementWrite' }
+      responses:
+        '201':
+          description: Đã ghi nhận xuất kho
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryTransaction' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+  /inventory/transactions:
+    get:
+      tags: [Inventory]
+      operationId: listInventoryTransactions
+      summary: Lịch sử giao dịch kho (ACCOUNTANT trở lên)
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - name: materialId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: transactionType
+          in: query
+          schema: { type: string, enum: [IMPORT, EXPORT, ADJUST, RETURN] }
+      responses:
+        '200':
+          description: Danh sách giao dịch phân trang
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedInventoryTransactions' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /inventory/balance:
+    get:
+      tags: [Inventory]
+      operationId: getInventoryBalance
+      summary: Báo cáo số dư tồn kho (ACCOUNTANT trở lên)
+      responses:
+        '200':
+          description: Tồn kho hiện tại theo vật tư
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/InventoryBalance' } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /season-lots/{slId}/harvest:
+    parameters:
+      - name: slId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Harvest & Quality]
+      operationId: getSeasonLotHarvest
+      summary: Lấy thông tin thu hoạch của lô mùa vụ
+      responses:
+        '200':
+          description: Bản ghi thu hoạch
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HarvestRecord' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Harvest & Quality]
+      operationId: createSeasonLotHarvest
+      summary: Ghi nhận thu hoạch (TECHNICIAN trở lên) và đánh giá điều kiện QR
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HarvestWrite' }
+      responses:
+        '201':
+          description: Thu hoạch đã ghi nhận; trả kèm trạng thái sẵn sàng phát hành QR
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HarvestCreateResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+    patch:
+      tags: [Harvest & Quality]
+      operationId: updateSeasonLotHarvest
+      summary: Cập nhật thu hoạch (TECHNICIAN trở lên)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HarvestPatch' }
+      responses:
+        '200':
+          description: Thu hoạch đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HarvestRecord' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /harvest/{id}/quality-tests:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Harvest & Quality]
+      operationId: listQualityTests
+      responses:
+        '200':
+          description: Danh sách kết quả kiểm nghiệm
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/QualityTest' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Harvest & Quality]
+      operationId: createQualityTest
+      summary: Thêm kết quả kiểm nghiệm (TECHNICIAN trở lên)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QualityTestWrite' }
+      responses:
+        '201':
+          description: Kết quả kiểm nghiệm đã tạo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QualityTest' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /harvest/{id}/quality-tests/{testId}:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+      - name: testId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Harvest & Quality]
+      operationId: updateQualityTest
+      summary: Cập nhật kết quả kiểm nghiệm (TECHNICIAN trở lên)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QualityTestPatch' }
+      responses:
+        '200':
+          description: Kết quả đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QualityTest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /season-lots/{slId}/qr/check:
+    parameters:
+      - name: slId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [QR Codes]
+      operationId: checkQrEligibility
+      summary: Kiểm tra ba điều kiện phát hành QR (TECHNICIAN trở lên)
+      description: |
+        Điều kiện đạt gồm nhật ký bắt buộc đã được xác nhận, thời gian cách ly đã an toàn,
+        và kiểm nghiệm chất lượng đạt. Endpoint chỉ kiểm tra, không phát hành QR.
+      responses:
+        '200':
+          description: Kết quả chi tiết từng điều kiện và QR hiện có (nếu có)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QrCheckResult' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /season-lots/{slId}/qr/generate:
+    parameters:
+      - name: slId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [QR Codes]
+      operationId: requestQrCode
+      summary: Tạo yêu cầu phát hành QR (TECHNICIAN trở lên)
+      description: Server tính lại cả ba điều kiện trong transaction; không tin cờ điều kiện từ client.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expiresAt: { type: string, format: date }
+      responses:
+        '201':
+          description: Yêu cầu phát hành QR ở trạng thái PENDING
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QrGenerationRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422':
+          description: Chưa đủ ba điều kiện phát hành QR
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QrConditionsNotMet' }
+  /qr/{id}/approve:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      tags: [QR Codes]
+      operationId: approveQrCode
+      summary: Duyệt và kích hoạt QR (COOP_ADMIN trở lên)
+      description: Server kiểm tra lại ba điều kiện tại thời điểm duyệt; nếu đạt thì kích hoạt QR và khóa các nhật ký liên quan.
+      responses:
+        '200':
+          description: QR đã được kích hoạt
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QrApprovalResult' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+  /qr/{id}/revoke:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      tags: [QR Codes]
+      operationId: revokeQrCode
+      summary: Thu hồi QR đang hoạt động (COOP_ADMIN trở lên)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1 }
+      responses:
+        '200':
+          description: QR đã thu hồi
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QrCode' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /qr:
+    get:
+      tags: [QR Codes]
+      operationId: listQrCodes
+      summary: Danh sách QR (COOP_ADMIN trở lên)
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - name: status
+          in: query
+          schema: { type: string, enum: [PENDING, ACTIVE, REVOKED, EXPIRED] }
+      responses:
+        '200':
+          description: Danh sách QR phân trang
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedQrCodes' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /public/trace/{token}:
+    get:
+      tags: [Public Portal]
+      operationId: getPublicTracePassport
+      security: []
+      summary: Tra cứu hộ chiếu lô từ QR, không cần đăng nhập
+      description: Chỉ trả dữ liệu đã công khai; loại bỏ PII, thông tin tài chính và tọa độ GPS chính xác. Nhật ký chỉ gồm bản ghi CONFIRMED được đánh dấu công khai.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Hộ chiếu lô mùa vụ công khai
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicTracePassport' }
+        '404':
+          description: QR không tồn tại
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/Error' }
+                  - type: object
+                    properties:
+                      code: { type: string, example: QR_NOT_FOUND }
+        '410':
+          description: QR đã bị thu hồi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/Error' }
+                  - type: object
+                    properties:
+                      code: { type: string, example: QR_REVOKED }
+  /public/trace/{token}/scan:
+    get:
+      tags: [Public Portal]
+      operationId: recordPublicQrScan
+      security: []
+      summary: Ghi nhận lượt quét QR công khai
+      description: "Tăng scanCount; response cần Cache-Control: no-store vì request có tác dụng phụ."
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Đã ghi nhận lượt quét }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410': { description: QR đã bị thu hồi }
+  /public/orders:
+    post:
+      tags: [Public Portal]
+      operationId: createPublicOrder
+      security: []
+      summary: Gửi yêu cầu đặt hàng/liên hệ từ khách hàng
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PublicOrderCreate' }
+      responses:
+        '201':
+          description: Yêu cầu đã tiếp nhận
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+
+  /orders:
+    get:
+      tags: [Orders]
+      operationId: listOrders
+      summary: Danh sách đơn hàng (ACCOUNTANT trở lên)
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - name: status
+          in: query
+          schema: { type: string, enum: [NEW, CONFIRMED, SHIPPED, DELIVERED, CANCELLED] }
+      responses:
+        '200':
+          description: Đơn hàng phân trang
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedOrders' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /orders/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Orders]
+      operationId: getOrder
+      responses:
+        '200':
+          description: Chi tiết đơn hàng
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /orders/{id}/status:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    patch:
+      tags: [Orders]
+      operationId: updateOrderStatus
+      summary: Cập nhật trạng thái đơn hàng (ACCOUNTANT trở lên)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [CONFIRMED, SHIPPED, DELIVERED, CANCELLED] }
+                cancelReason: { type: string }
+                deliveryDate: { type: string, format: date }
+      responses:
+        '200':
+          description: Trạng thái đơn đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+  /orders/{id}/match:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      tags: [Orders]
+      operationId: matchOrderToHarvest
+      summary: Khớp đơn với lô hàng đã thu hoạch (ACCOUNTANT trở lên)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [harvestRecordId, quantityKg]
+              properties:
+                harvestRecordId: { type: string, format: uuid }
+                quantityKg: { type: number, minimum: 0, exclusiveMinimum: true }
+      responses:
+        '200':
+          description: Đơn đã khớp với sản lượng thu hoạch
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+
+  /reports/season-progress:
+    get:
+      tags: [Reports]
+      operationId: getSeasonProgressReport
+      parameters: [{ $ref: '#/components/parameters/ReportSeasonId' }]
+      responses:
+        '200':
+          description: Tiến độ mùa vụ
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DashboardStats' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /reports/yield:
+    get:
+      tags: [Reports]
+      operationId: getYieldReport
+      parameters: [{ $ref: '#/components/parameters/ReportSeasonId' }]
+      responses:
+        '200':
+          description: Thống kê sản lượng theo mùa vụ/lô
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/YieldReport' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /reports/quarantine-alerts:
+    get:
+      tags: [Reports]
+      operationId: getReportQuarantineAlerts
+      description: Alias tương thích của GET /quarantine/alerts.
+      parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/Limit' }]
+      responses:
+        '200':
+          description: Báo cáo cảnh báo cách ly
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuarantineAlerts' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /reports/diary-completion:
+    get:
+      tags: [Reports]
+      operationId: getDiaryCompletionReport
+      parameters: [{ $ref: '#/components/parameters/ReportSeasonId' }]
+      responses:
+        '200':
+          description: Tỷ lệ hoàn thành và xác nhận nhật ký
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiaryCompletionReport' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /reports/inventory-status:
+    get:
+      tags: [Reports]
+      operationId: getInventoryStatusReport
+      responses:
+        '200':
+          description: Báo cáo tồn kho hiện tại
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/InventoryBalance' } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /reports/overdue-tasks:
+    get:
+      tags: [Reports]
+      operationId: getOverdueTasksReport
+      parameters: [{ $ref: '#/components/parameters/ReportSeasonId' }]
+      responses:
+        '200':
+          description: Công việc quá hạn theo mùa vụ
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OverdueTasksReport' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /audit-logs:
+    get:
+      tags: [System Admin]
+      operationId: listAuditLogs
+      summary: Nhật ký thao tác hệ thống (SUPER_ADMIN)
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - name: entityType
+          in: query
+          schema: { type: string }
+        - name: entityId
+          in: query
+          schema: { type: string }
+        - name: userId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: action
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Nhật ký thao tác phân trang, chỉ đọc
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedAuditLogs' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /system/configs:
+    get:
+      tags: [System Admin]
+      operationId: listSystemConfigs
+      summary: Danh sách cấu hình (SUPER_ADMIN)
+      responses:
+        '200':
+          description: Các cấu hình hệ thống
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/SystemConfig' } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /system/configs/{key}:
+    parameters:
+      - name: key
+        in: path
+        required: true
+        schema: { type: string, maxLength: 100 }
+    patch:
+      tags: [System Admin]
+      operationId: updateSystemConfig
+      summary: Cập nhật cấu hình (SUPER_ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [value]
+              properties:
+                value: { type: string }
+                valueType: { type: string, enum: [STRING, NUMBER, BOOLEAN, JSON] }
+                description: { type: string, nullable: true }
+                group: { type: string, nullable: true }
+                isPublic: { type: boolean }
+      responses:
+        '200':
+          description: Cấu hình đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SystemConfig' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /roles:
+    get:
+      tags: [System Admin]
+      operationId: listRoles
+      summary: Danh sách vai trò và permissions
+      responses:
+        '200':
+          description: Vai trò và quyền hạn
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Role' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /roles/{id}/permissions:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    patch:
+      tags: [System Admin]
+      operationId: updateRolePermissions
+      summary: Cập nhật permissions (SUPER_ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [permissions]
+              properties:
+                permissions:
+                  $ref: '#/components/schemas/Permissions'
+      responses:
+        '200':
+          description: Quyền hạn đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Role' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    ReportSeasonId:
+      name: seasonId
+      in: query
+      required: false
+      schema: { type: string, format: uuid }
+  responses:
+    BadRequest:
+      description: Dữ liệu đầu vào sai định dạng hoặc thiếu trường
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Thiếu hoặc token không hợp lệ
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InvalidCredentials:
+      description: Email hoặc mật khẩu không đúng
+      content:
+        application/json:
+          schema:
+            allOf:
+              - { $ref: '#/components/schemas/Error' }
+              - type: object
+                properties:
+                  code: { type: string, example: INVALID_CREDENTIALS }
+                  message: { type: string, example: Email hoặc mật khẩu không đúng }
+    Forbidden:
+      description: Không đủ quyền RBAC hoặc ngoài phạm vi dữ liệu được phép
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Không tìm thấy tài nguyên trong phạm vi truy cập
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Trùng dữ liệu hoặc xung đột trạng thái
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    BusinessRule:
+      description: Vi phạm điều kiện nghiệp vụ
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, example: ERR_CODE }
+        message: { type: string }
+        details: { type: object, additionalProperties: true }
+    RoleCode:
+      type: string
+      enum: [SUPER_ADMIN, COOP_ADMIN, TECHNICIAN, ACCOUNTANT, FARMER, GUEST]
+    UserSession:
+      type: object
+      required: [id, uid, fullName, roles, permissions]
+      properties:
+        id: { type: string, format: uuid }
+        uid: { type: string, description: Alias tương thích; hiện schema dùng id UUID }
+        fullName: { type: string }
+        roles: { type: array, items: { $ref: '#/components/schemas/RoleCode' } }
+        permissions: { type: object, additionalProperties: true }
+    User:
+      allOf:
+        - { $ref: '#/components/schemas/UserSession' }
+        - type: object
+          properties:
+            email: { type: string, format: email }
+            phone: { type: string, nullable: true }
+            isActive: { type: boolean }
+            createdAt: { type: string, format: date-time }
+    Role:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { $ref: '#/components/schemas/RoleCode' }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        permissions: { $ref: '#/components/schemas/Permissions' }
+        isActive: { type: boolean }
+    Permissions:
+      type: object
+      description: Module-to-action permission map, for example diary.read=true and diary.confirm=false.
+      additionalProperties:
+        type: object
+        additionalProperties: { type: boolean }
+      example:
+        diary: { read: true, create: true, confirm: false }
+        lots: { read: true }
+    AuditLog:
+      type: object
+      properties:
+        id: { type: string, description: BigInt serialized as a decimal string }
+        userId: { type: string, format: uuid, nullable: true }
+        entityType: { type: string }
+        entityId: { type: string }
+        action: { type: string }
+        oldValues: { type: object, nullable: true, additionalProperties: true }
+        newValues: { type: object, nullable: true, additionalProperties: true }
+        ipAddress: { type: string, nullable: true }
+        userAgent: { type: string, nullable: true }
+        metadata: { type: object, nullable: true, additionalProperties: true }
+        createdAt: { type: string, format: date-time }
+    PaginatedAuditLogs:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/AuditLog' } }
+        pagination: { $ref: '#/components/schemas/PageInfo' }
+    SystemConfig:
+      type: object
+      properties:
+        key: { type: string }
+        value: { type: string }
+        valueType: { type: string, enum: [STRING, NUMBER, BOOLEAN, JSON] }
+        description: { type: string, nullable: true }
+        group: { type: string, nullable: true }
+        isPublic: { type: boolean }
+        updatedAt: { type: string, format: date-time }
+    PageInfo:
+      type: object
+      required: [page, limit, total]
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+    PaginatedUsers:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/User' } }
+        pagination: { $ref: '#/components/schemas/PageInfo' }
+    Zone:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        boundary: { type: object, nullable: true }
+        province: { type: string, nullable: true }
+        district: { type: string, nullable: true }
+        commune: { type: string, nullable: true }
+        isActive: { type: boolean }
+    ZonePatch:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string, nullable: true }
+        boundary: { type: object, nullable: true }
+        province: { type: string, nullable: true }
+        district: { type: string, nullable: true }
+        commune: { type: string, nullable: true }
+        isActive: { type: boolean }
+    Lot:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        zoneId: { type: string, format: uuid }
+        lotCode: { type: string }
+        name: { type: string }
+        centerLat: { type: number, nullable: true }
+        centerLng: { type: number, nullable: true }
+        areaM2: { type: number, nullable: true }
+        soilType: { type: string, nullable: true }
+        isActive: { type: boolean }
+    PaginatedZones:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/Zone' } }
+        pagination: { $ref: '#/components/schemas/PageInfo' }
+    PaginatedLots:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/Lot' } }
+        pagination: { $ref: '#/components/schemas/PageInfo' }
+    SeasonCreate:
+      type: object
+      required: [name, code, cropType, startDate, endDate]
+      properties:
+        name: { type: string }
+        code: { type: string }
+        cropType: { type: string }
+        description: { type: string }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+    SeasonPatch:
+      type: object
+      properties:
+        name: { type: string }
+        cropType: { type: string }
+        description: { type: string, nullable: true }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        isActive: { type: boolean }
+    Season:
+      allOf:
+        - { $ref: '#/components/schemas/SeasonCreate' }
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            isActive: { type: boolean }
+            createdAt: { type: string, format: date-time }
+    PaginatedSeasons:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/Season' } }
+        pagination: { $ref: '#/components/schemas/PageInfo' }
+    SeasonLot:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        seasonId: { type: string, format: uuid }
+        lotId: { type: string, format: uuid }
+        lotCode: { type: string }
+        assignedFarmer:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            fullName: { type: string }
+        plannedSowDate: { type: string, format: date, nullable: true }
+        plannedHarvestDate: { type: string, format: date, nullable: true }
+        materialQuotaKg: { type: number, nullable: true }
+        quarantineStatus: { type: string, enum: [DANGER, WARNING, SAFE, NOT_APPLIED] }
+        status: { type: string, example: PLANNING }
+    SeasonDashboard:
+      type: object
+      properties:
+        seasonId: { type: string, format: uuid }
+        lotCount: { type: integer }
+        diaryCounts:
+          type: object
+          additionalProperties: { type: integer }
+        quarantineCounts:
+          type: object
+          additionalProperties: { type: integer }
+        plannedHarvestQuantityKg: { type: number, nullable: true }
+        actualHarvestQuantityKg: { type: number, nullable: true }
+        overdueTaskCount: { type: integer }
+    DashboardStats:
+      type: object
+      properties:
+        activeSeason:
+          type: object
+          properties:
+            count: { type: integer }
+            name: { type: string }
+        totalLots: { type: integer }
+        pendingDiaries: { type: integer }
+        quarantineAlerts:
+          type: object
+          properties:
+            DANGER: { type: integer }
+            WARNING: { type: integer }
+            SAFE: { type: integer }
+        pendingQRRequests: { type: integer }
+        pendingOrders: { type: integer }
+        yieldThisSeason: { type: number, description: Yield in kilograms }
+    HarvestWrite:
+      type: object
+      required: [harvestDate, actualYieldKg]
+      properties:
+        harvestDate: { type: string, format: date }
+        actualYieldKg: { type: number, minimum: 0 }
+        qualityGrade: { type: string, enum: [A, B, C, REJECT], nullable: true }
+        notes: { type: string, nullable: true }
+    HarvestPatch:
+      type: object
+      properties:
+        harvestDate: { type: string, format: date }
+        actualYieldKg: { type: number, minimum: 0 }
+        qualityGrade: { type: string, enum: [A, B, C, REJECT], nullable: true }
+        notes: { type: string, nullable: true }
+    HarvestRecord:
+      allOf:
+        - { $ref: '#/components/schemas/HarvestWrite' }
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            seasonLotId: { type: string, format: uuid }
+            createdAt: { type: string, format: date-time }
+    HarvestCreateResult:
+      type: object
+      required: [harvestRecord, qrReadiness]
+      properties:
+        harvestRecord:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            actualYieldKg: { type: number }
+            qualityGrade: { type: string, nullable: true }
+        qrReadiness:
+          type: object
+          required: [conditionDiaryOk, conditionQuarantineOk, conditionQualityOk, canGenerateQR, blockedBy]
+          properties:
+            conditionDiaryOk: { type: boolean }
+            conditionQuarantineOk: { type: boolean }
+            conditionQualityOk: { type: boolean }
+            canGenerateQR: { type: boolean }
+            blockedBy: { type: array, items: { type: string } }
+    QualityTestWrite:
+      type: object
+      required: [testType, testDate, isPassed]
+      properties:
+        testType: { type: string }
+        testDate: { type: string, format: date }
+        labName: { type: string }
+        labCode: { type: string }
+        results: { type: array, items: { type: object, additionalProperties: true } }
+        isPassed: { type: boolean }
+        certificationUrl: { type: string, format: uri }
+        expiryDate: { type: string, format: date }
+        notes: { type: string }
+    QualityTestPatch:
+      type: object
+      properties:
+        testType: { type: string }
+        testDate: { type: string, format: date }
+        labName: { type: string, nullable: true }
+        labCode: { type: string, nullable: true }
+        results: { type: array, items: { type: object, additionalProperties: true } }
+        isPassed: { type: boolean }
+        certificationUrl: { type: string, format: uri, nullable: true }
+        expiryDate: { type: string, format: date, nullable: true }
+        notes: { type: string, nullable: true }
+    QualityTest:
+      allOf:
+        - { $ref: '#/components/schemas/QualityTestWrite' }
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            harvestRecordId: { type: string, format: uuid }
+            createdAt: { type: string, format: date-time }
+    MaterialWrite:
+      type: object
+      required: [code, name, category, unit]
+      properties:
+        code: { type: string }
+        name: { type: string }
+        category: { type: string, enum: [PESTICIDE, FERTILIZER, SEED, OTHER] }
+        unit: { type: string }
+        manufacturer: { type: string }
+        registrationNo: { type: string }
+        quarantineDays: { type: integer, minimum: 0, default: 0 }
+        activeIngredient: { type: string }
+        concentration: { type: string }
+        minStockAlert: { type: number, minimum: 0 }
+    MaterialPatch:
+      type: object
+      properties:
+        name: { type: string }
+        category: { type: string, enum: [PESTICIDE, FERTILIZER, SEED, OTHER] }
+        unit: { type: string }
+        manufacturer: { type: string, nullable: true }
+        registrationNo: { type: string, nullable: true }
+        quarantineDays: { type: integer, minimum: 0 }
+        activeIngredient: { type: string, nullable: true }
+        concentration: { type: string, nullable: true }
+        minStockAlert: { type: number, minimum: 0, nullable: true }
+        isActive: { type: boolean }
+    Material:
+      allOf:
+        - { $ref: '#/components/schemas/MaterialWrite' }
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            currentStock: { type: number }
+            isActive: { type: boolean }
+            createdAt: { type: string, format: date-time }
+    PaginatedMaterials:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/Material' } }
+        pagination: { $ref: '#/components/schemas/PageInfo' }
+    InventoryMovementWrite:
+      type: object
+      required: [materialId, quantity, transactedAt]
+      properties:
+        materialId: { type: string, format: uuid }
+        quantity: { type: number, minimum: 0, exclusiveMinimum: true }
+        unitPrice: { type: number, minimum: 0 }
+        referenceNo: { type: string }
+        notes: { type: string }
+        transactedAt: { type: string, format: date }
+    InventoryTransaction:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        materialId: { type: string, format: uuid }
+        transactionType: { type: string, enum: [IMPORT, EXPORT, ADJUST, RETURN] }
+        quantity: { type: number }
+        balanceAfter: { type: number }
+        transactedAt: { type: string, format: date }
+        createdAt: { type: string, format: date-time }
+    PaginatedInventoryTransactions:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/InventoryTransaction' } }
+        pagination: { $ref: '#/components/schemas/PageInfo' }
+    InventoryBalance:
+      type: object
+      properties:
+        materialId: { type: string, format: uuid }
+        materialCode: { type: string }
+        materialName: { type: string }
+        unit: { type: string }
+        currentStock: { type: number }
+        minStockAlert: { type: number, nullable: true }
+    DiaryStatus:
+      type: string
+      enum: [DRAFT, SUBMITTED, CONFIRMED, REJECTED, LOCKED]
+    DiaryCreate:
+      type: object
+      required: [workDate, workType]
+      properties:
+        clientTempId: { type: string, format: uuid, description: Idempotency key for offline synchronization }
+        workDate: { type: string, format: date }
+        workType: { type: string, enum: [PLOWING, SOWING, FERTILIZING, PESTICIDE, IRRIGATION, WEEDING, HARVESTING, OTHER] }
+        title: { type: string }
+        description: { type: string }
+        laborCount: { type: integer, minimum: 0 }
+        weatherTemp: { type: number }
+        weatherHumid: { type: number, minimum: 0, maximum: 100 }
+        weatherNote: { type: string }
+        attachments:
+          type: array
+          items:
+            type: object
+            required: [fileUrl]
+            properties:
+              fileUrl: { type: string, format: uri }
+              fileType: { type: string }
+              fileSize: { type: integer, minimum: 0 }
+              caption: { type: string }
+        materials:
+          type: array
+          items:
+            type: object
+            required: [materialId, quantityUsed, unit, applicationDate]
+            properties:
+              materialId: { type: string, format: uuid }
+              quantityUsed: { type: number, minimum: 0, exclusiveMinimum: true }
+              unit: { type: string }
+              applicationDate: { type: string, format: date }
+              note: { type: string }
+    DiaryPatch:
+      allOf:
+        - { $ref: '#/components/schemas/DiaryCreate' }
+      description: Chỉ các trường nội dung được cập nhật; id/seasonLotId không đổi.
+    DiaryEntry:
+      allOf:
+        - { $ref: '#/components/schemas/DiaryCreate' }
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            seasonLotId: { type: string, format: uuid }
+            authorId: { type: string, format: uuid }
+            status: { $ref: '#/components/schemas/DiaryStatus' }
+            isPublic: { type: boolean, description: Chỉ nhật ký CONFIRMED và isPublic=true mới được public }
+            submittedAt: { type: string, format: date-time, nullable: true }
+            confirmedAt: { type: string, format: date-time, nullable: true }
+            confirmerId: { type: string, format: uuid, nullable: true }
+            rejectReason: { type: string, nullable: true }
+            lockedAt: { type: string, format: date-time, nullable: true }
+            createdAt: { type: string, format: date-time }
+    PaginatedDiaries:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/DiaryEntry' } }
+        pagination: { $ref: '#/components/schemas/PageInfo' }
+    DiaryCreateResult:
+      allOf:
+        - { $ref: '#/components/schemas/DiaryEntry' }
+        - type: object
+          properties:
+            syncedAt: { type: string, format: date-time, nullable: true }
+            quarantineUpdate: { $ref: '#/components/schemas/QuarantineResult' }
+    DiaryConfirmation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [CONFIRMED] }
+        confirmedBy:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            fullName: { type: string }
+        confirmedAt: { type: string, format: date-time }
+    DiarySyncRequest:
+      type: object
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            allOf:
+              - { $ref: '#/components/schemas/DiaryCreate' }
+              - type: object
+                required: [clientTempId, seasonLotId]
+                properties:
+                  seasonLotId: { type: string, format: uuid }
+    DiarySyncResult:
+      type: object
+      properties:
+        synced: { type: integer }
+        failed: { type: integer }
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              clientTempId: { type: string, format: uuid }
+              serverId: { type: string, format: uuid, nullable: true }
+              status: { type: string, enum: [created, duplicate, failed] }
+              code: { type: string, nullable: true }
+              message: { type: string, nullable: true }
+        duplicates:
+          type: array
+          items: { type: string, format: uuid }
+    QuarantineResult:
+      type: object
+      required: [seasonLotId, quarantineStatus, requiredQuarantineDays]
+      properties:
+        seasonLotId: { type: string, format: uuid }
+        lotCode: { type: string }
+        cropType: { type: string }
+        lastPesticideDate: { type: string, format: date, nullable: true }
+        requiredQuarantineDays: { type: integer }
+        safeDateToHarvest: { type: string, format: date, nullable: true }
+        today: { type: string, format: date }
+        daysRemaining: { type: integer, nullable: true }
+        quarantineStatus: { type: string, enum: [DANGER, WARNING, SAFE, NOT_APPLIED] }
+        colorIndicator: { type: string, enum: [RED, YELLOW, GREEN, GRAY] }
+        pesticideHistory:
+          type: array
+          items:
+            type: object
+            properties:
+              applicationDate: { type: string, format: date }
+              materialName: { type: string }
+              activeIngredient: { type: string, nullable: true }
+              quarantineDays: { type: integer }
+              quantity: { type: number }
+              unit: { type: string }
+              diaryEntryId: { type: string, format: uuid }
+        harvestAllowed: { type: boolean }
+        warningMessage: { type: string, nullable: true }
+        calculatedAt: { type: string, format: date-time }
+    QuarantineAlerts:
+      type: object
+      properties:
+        summary:
+          type: object
+          properties:
+            total: { type: integer }
+            DANGER: { type: integer }
+            WARNING: { type: integer }
+            SAFE: { type: integer }
+            NOT_APPLIED: { type: integer }
+        alerts:
+          type: array
+          items:
+            type: object
+            properties:
+              seasonLotId: { type: string, format: uuid }
+              lotCode: { type: string }
+              farmerName: { type: string, nullable: true }
+              quarantineStatus: { type: string, enum: [DANGER, WARNING, SAFE, NOT_APPLIED] }
+              daysRemaining: { type: integer, nullable: true }
+              safeDateToHarvest: { type: string, format: date, nullable: true }
+              colorIndicator: { type: string, enum: [RED, YELLOW, GREEN, GRAY] }
+        pagination: { $ref: '#/components/schemas/PageInfo' }
+    QrEligibility:
+      type: object
+      required: [eligible, conditions, blockers]
+      properties:
+        eligible: { type: boolean }
+        conditions:
+          type: object
+          required: [diary, quarantine, quality]
+          properties:
+            diary: { type: boolean }
+            quarantine: { type: boolean }
+            quality: { type: boolean }
+        blockers:
+          type: array
+          items: { type: string }
+    QrCheckResult:
+      type: object
+      properties:
+        seasonLotId: { type: string, format: uuid }
+        lotCode: { type: string }
+        cropType: { type: string }
+        season: { type: string }
+        conditions:
+          type: object
+          properties:
+            diary:
+              type: object
+              properties:
+                passed: { type: boolean }
+                detail: { type: string }
+                confirmedEntries: { type: integer }
+                totalEntries: { type: integer }
+                unconfirmedEntries:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      workDate: { type: string, format: date }
+                      status: { $ref: '#/components/schemas/DiaryStatus' }
+            quarantine:
+              type: object
+              properties:
+                passed: { type: boolean }
+                detail: { type: string }
+                safeDateToHarvest: { type: string, format: date, nullable: true }
+                today: { type: string, format: date }
+                daysOverSafe: { type: integer, nullable: true }
+            quality:
+              type: object
+              properties:
+                passed: { type: boolean }
+                detail: { type: string }
+                latestTest:
+                  allOf:
+                    - { $ref: '#/components/schemas/QualityTest' }
+                  nullable: true
+        canGenerateQR: { type: boolean }
+        existingQR:
+          allOf:
+            - { $ref: '#/components/schemas/QrCode' }
+          nullable: true
+    QrGenerationRequest:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        token: { type: string }
+        status: { type: string, enum: [PENDING] }
+        conditionSnapshot:
+          type: object
+          properties:
+            conditionDiaryOk: { type: boolean }
+            conditionQuarantineOk: { type: boolean }
+            conditionQualityOk: { type: boolean }
+        message: { type: string }
+    QrConditionsNotMet:
+      type: object
+      required: [code, message, blockedBy]
+      properties:
+        code: { type: string, example: QR_CONDITIONS_NOT_MET }
+        message: { type: string }
+        blockedBy:
+          type: array
+          items: { type: string, enum: [conditionDiaryOk, conditionQuarantineOk, conditionQualityOk] }
+    QrApprovalResult:
+      allOf:
+        - { $ref: '#/components/schemas/QrCode' }
+        - type: object
+          properties:
+            qrImageUrl: { type: string, format: uri }
+            approvedBy:
+              type: object
+              properties:
+                id: { type: string, format: uuid }
+                fullName: { type: string }
+            lockedDiaryCount: { type: integer, minimum: 0 }
+    QrCode:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        seasonLotId: { type: string, format: uuid }
+        token: { type: string }
+        publicUrl: { type: string, format: uri, nullable: true }
+        status: { type: string, enum: [PENDING, ACTIVE, REVOKED, EXPIRED] }
+        conditionDiaryOk: { type: boolean }
+        conditionQuarantineOk: { type: boolean }
+        conditionQualityOk: { type: boolean }
+        approvedAt: { type: string, format: date-time, nullable: true }
+        issuedAt: { type: string, format: date-time, nullable: true }
+        scanCount: { type: integer, minimum: 0 }
+        revokedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+    PaginatedQrCodes:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/QrCode' } }
+        pagination: { $ref: '#/components/schemas/PageInfo' }
+    PublicTracePassport:
+      type: object
+      description: Whitelist public DTO. Never include farmer identity, financial data, national IDs, or precise GPS.
+      properties:
+        product:
+          type: object
+          properties:
+            name: { type: string }
+            lotCode: { type: string }
+            cropType: { type: string }
+            qualityGrade: { type: string, nullable: true }
+        farm:
+          type: object
+          properties:
+            zoneName: { type: string }
+            province: { type: string, nullable: true }
+            district: { type: string, nullable: true }
+            areaHectares: { type: number, nullable: true }
+        timeline:
+          type: object
+          properties:
+            sowDate: { type: string, format: date, nullable: true }
+            harvestDate: { type: string, format: date, nullable: true }
+            daysToGrow: { type: integer, nullable: true }
+        diary:
+          type: array
+          items:
+            type: object
+            properties:
+              workDate: { type: string, format: date }
+              workType: { type: string }
+              description: { type: string, nullable: true }
+        quarantine:
+          type: object
+          properties:
+            lastPesticideDate: { type: string, format: date, nullable: true }
+            safeDateToHarvest: { type: string, format: date, nullable: true }
+            harvestDate: { type: string, format: date, nullable: true }
+            daysAfterSafe: { type: integer, nullable: true }
+            status: { type: string, enum: [DANGER, WARNING, SAFE, NOT_APPLIED] }
+        certifications:
+          type: array
+          items:
+            type: object
+            properties:
+              testType: { type: string }
+              testLab: { type: string, nullable: true }
+              testDate: { type: string, format: date }
+              isPassed: { type: boolean }
+              certificationUrl: { type: string, format: uri, nullable: true }
+        qrMeta:
+          type: object
+          properties:
+            issuedAt: { type: string, format: date-time }
+            scanCount: { type: integer }
+    PublicOrderCreate:
+      type: object
+      required: [token, buyerName, buyerPhone, quantityKg]
+      properties:
+        token: { type: string }
+        buyerName: { type: string, maxLength: 150 }
+        buyerPhone: { type: string, maxLength: 20 }
+        buyerEmail: { type: string, format: email }
+        buyerAddress: { type: string }
+        quantityKg: { type: number, minimum: 0, exclusiveMinimum: true }
+        note: { type: string }
+    Order:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        orderNo: { type: string }
+        qrCodeId: { type: string, format: uuid }
+        buyerName: { type: string }
+        buyerPhone: { type: string }
+        buyerEmail: { type: string, nullable: true }
+        buyerAddress: { type: string, nullable: true }
+        quantityKg: { type: number }
+        status: { type: string, enum: [NEW, CONFIRMED, SHIPPED, DELIVERED, CANCELLED] }
+        deliveryDate: { type: string, format: date, nullable: true }
+        createdAt: { type: string, format: date-time }
+    PaginatedOrders:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/Order' } }
+        pagination: { $ref: '#/components/schemas/PageInfo' }
+    YieldReport:
+      type: object
+      properties:
+        seasonId: { type: string, format: uuid, nullable: true }
+        totalActualYieldKg: { type: number }
+        lots:
+          type: array
+          items:
+            type: object
+            properties:
+              seasonLotId: { type: string, format: uuid }
+              lotCode: { type: string }
+              actualYieldKg: { type: number }
+              qualityGrade: { type: string, nullable: true }
+    DiaryCompletionReport:
+      type: object
+      properties:
+        seasonId: { type: string, format: uuid, nullable: true }
+        expectedEntries: { type: integer }
+        createdEntries: { type: integer }
+        confirmedEntries: { type: integer }
+        completionPercent: { type: number, minimum: 0, maximum: 100 }
+    OverdueTasksReport:
+      type: object
+      properties:
+        seasonId: { type: string, format: uuid, nullable: true }
+        total: { type: integer }
+        tasks:
+          type: array
+          items:
+            type: object
+            properties:
+              seasonLotId: { type: string, format: uuid }
+              lotCode: { type: string }
+              assignedFarmerName: { type: string, nullable: true }
+              task: { type: string }
+              dueDate: { type: string, format: date }
+              daysOverdue: { type: integer }

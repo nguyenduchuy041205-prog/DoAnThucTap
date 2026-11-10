@@ -1,0 +1,27 @@
+{
+  "name": "crop-coop",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/api",
+    "apps/web",
+    "packages/database"
+  ],
+  "scripts": {
+    "dev": "concurrently --kill-others-on-fail --names api,web \"npm run start:dev --workspace @cropcoop/api\" \"npm run dev --workspace @cropcoop/web\"",
+    "dev:api": "npm run start:dev --workspace @cropcoop/api",
+    "dev:web": "npm run dev --workspace @cropcoop/web",
+    "build": "npm run build --workspaces --if-present",
+    "db:generate": "npm run db:generate --workspace @cropcoop/api",
+    "db:push": "node --env-file=.env ./node_modules/prisma/build/index.js db push --schema packages/database/prisma/schema.prisma",
+    "db:studio": "node --env-file=.env ./node_modules/prisma/build/index.js studio --schema packages/database/prisma/schema.prisma",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

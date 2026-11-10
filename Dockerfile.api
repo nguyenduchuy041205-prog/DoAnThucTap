@@ -1,0 +1,10 @@
+FROM node:20-bookworm-slim
+
+WORKDIR /workspace
+COPY . .
+
+RUN npm install
+RUN npm run db:generate --workspace @cropcoop/api
+
+EXPOSE 3000
+CMD ["sh", "-c", "npm run db:push --workspace @cropcoop/database && npm run start:dev --workspace @cropcoop/api"]

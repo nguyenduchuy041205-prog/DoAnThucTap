@@ -1,0 +1,722 @@
+// =============================================================================
+// CROP COOP — Prisma Schema
+// Database: PostgreSQL
+// Generator: prisma-client-js
+// Last updated: 2026-11-09
+// =============================================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgcrypto, uuid_ossp]
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+/// Mã vai trò hệ thống
+enum RoleCode {
+  SUPER_ADMIN
+  COOP_ADMIN
+  TECHNICIAN
+  ACCOUNTANT
+  FARMER
+  GUEST
+}
+
+/// Trạng thái nhật ký sản xuất
+enum DiaryStatus {
+  DRAFT
+  SUBMITTED
+  CONFIRMED
+  REJECTED
+  LOCKED
+}
+
+/// Loại công việc ghi nhật ký
+enum WorkType {
+  PLOWING      // Làm đất
+  SOWING       // Gieo trồng
+  FERTILIZING  // Bón phân
+  PESTICIDE    // Phun thuốc BVTV
+  IRRIGATION   // Tưới tiêu
+  WEEDING      // Làm cỏ
+  HARVESTING   // Thu hoạch
+  OTHER        // Khác
+}
+
+/// Trạng thái cách ly kiểm dịch của lô trong mùa vụ
+enum QuarantineStatus {
+  DANGER       // Đang trong thời gian cách ly (< 100% ngày)
+  WARNING      // Sắp hết cách ly (còn ≤ 3 ngày)
+  SAFE         // Đã qua thời gian cách ly an toàn
+  NOT_APPLIED  // Chưa phun thuốc nào trong mùa vụ
+}
+
+/// Loại giao dịch kho vật tư
+enum TransactionType {
+  IMPORT       // Nhập kho
+  EXPORT       // Xuất kho (dùng trong nhật ký)
+  ADJUST       // Điều chỉnh tồn kho (kiểm kho)
+  RETURN       // Hoàn trả
+}
+
+/// Trạng thái mã QR
+enum QrStatus {
+  PENDING      // Đang chờ duyệt
+  ACTIVE       // Đã kích hoạt — in lên bao bì
+  REVOKED      // Thu hồi (phát hiện vi phạm)
+  EXPIRED      // Hết hạn
+}
+
+/// Trạng thái đơn hàng
+enum OrderStatus {
+  NEW
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+/// Nhóm thực thể để AuditLog phân loại
+enum EntityType {
+  USER
+  ROLE
+  ZONE
+  LOT
+  FARMER_LOT
+  SEASON
+  SEASON_LOT
+  DIARY_ENTRY
+  DIARY_ATTACHMENT
+  MATERIAL
+  INVENTORY_TRANSACTION
+  MATERIAL_USAGE
+  HARVEST_RECORD
+  QUALITY_TEST
+  QR_CODE
+  ORDER
+  SYSTEM_CONFIG
+}
+
+// =============================================================================
+// NHÓM 1 — PHÂN QUYỀN & NGƯỜI DÙNG
+// =============================================================================
+
+/// Danh sách vai trò với quyền hạn theo module (JSON)
+model Role {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        RoleCode @unique
+  name        String   @db.VarChar(100)
+  description String?  @db.Text
+
+  /// Cấu trúc JSON permissions:
+  /// { "diary": { "read": true, "write": true, "approve": false }, ... }
+  permissions Json     @default("{}")
+
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  userRoles   UserRole[]
+
+  @@map("roles")
+}
+
+/// Tài khoản người dùng hệ thống
+model User {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  username     String    @unique @db.VarChar(50)
+  email        String    @unique @db.VarChar(255)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+
+  fullName     String    @map("full_name") @db.VarChar(150)
+  phone        String?   @db.VarChar(20)
+
+  /// PII — Mã số CCCD/CMND, lưu dạng encrypted (pgcrypto)
+  nationalId   String?   @map("national_id") @db.VarChar(255)
+
+  avatarUrl    String?   @map("avatar_url") @db.VarChar(500)
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  userRoles       UserRole[]
+  farmerLots      FarmerLot[]
+  diaryEntries    DiaryEntry[]    @relation("DiaryAuthor")
+  confirmedDiaries DiaryEntry[]  @relation("DiaryConfirmer")
+  auditLogs       AuditLog[]
+
+  @@map("users")
+}
+
+/// N–N: User ↔ Role (1 user có thể mang nhiều role)
+model UserRole {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  roleId    String   @map("role_id") @db.Uuid
+  grantedAt DateTime @default(now()) @map("granted_at")
+  grantedBy String?  @map("granted_by") @db.Uuid
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+// =============================================================================
+// NHÓM 2 — VÙNG TRỒNG & LÔ ĐẤT
+// =============================================================================
+
+/// Vùng địa lý canh tác (ví dụ: Vùng Đồng Bằng Sông Cửu Long - Tiểu khu A)
+model Zone {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @db.VarChar(150)
+  code        String   @unique @db.VarChar(30)
+  description String?  @db.Text
+
+  /// GeoJSON Polygon ranh giới vùng
+  /// Ví dụ: { "type": "Polygon", "coordinates": [[[lon,lat],...]] }
+  boundary    Json?
+
+  province    String?  @db.VarChar(100)
+  district    String?  @db.VarChar(100)
+  commune     String?  @db.VarChar(100)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  lots Lot[]
+
+  @@map("zones")
+}
+
+/// Lô đất cụ thể thuộc về một Zone
+model Lot {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  zoneId        String   @map("zone_id") @db.Uuid
+  lotCode       String   @unique @map("lot_code") @db.VarChar(30)
+  name          String   @db.VarChar(150)
+
+  /// Tọa độ GPS trung tâm lô (WGS-84)
+  centerLat     Decimal? @map("center_lat") @db.Decimal(10, 7)
+  centerLng     Decimal? @map("center_lng") @db.Decimal(10, 7)
+
+  /// Diện tích (đơn vị: m²)
+  areaM2        Decimal? @map("area_m2") @db.Decimal(12, 2)
+
+  soilType      String?  @map("soil_type") @db.VarChar(100)
+  notes         String?  @db.Text
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  zone       Zone        @relation(fields: [zoneId], references: [id], onDelete: Restrict)
+  farmerLots FarmerLot[]
+  seasonLots SeasonLot[]
+
+  @@map("lots")
+}
+
+/// Row-Level Security: Nông dân sở hữu lô đất trong khoảng thời gian
+model FarmerLot {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  farmerId    String    @map("farmer_id") @db.Uuid
+  lotId       String    @map("lot_id") @db.Uuid
+
+  /// Ngày bắt đầu sở hữu/canh tác lô
+  startDate   DateTime  @map("start_date") @db.Date
+
+  /// Ngày kết thúc (null = hiện đang sở hữu)
+  endDate     DateTime? @map("end_date") @db.Date
+
+  ownershipType String? @map("ownership_type") @db.VarChar(50) // "OWN", "LEASE", "CONTRACT"
+  notes       String?   @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  farmer User @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  lot    Lot  @relation(fields: [lotId], references: [id], onDelete: Restrict)
+
+  @@index([farmerId, lotId])
+  @@map("farmer_lots")
+}
+
+// =============================================================================
+// NHÓM 3 — MÙA VỤ (SEASON PLANNING)
+// =============================================================================
+
+/// Kế hoạch mùa vụ tổng
+model Season {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @db.VarChar(150)      // "Vụ Hè Thu 2025"
+  code        String   @unique @db.VarChar(30)
+  cropType    String   @map("crop_type") @db.VarChar(100) // "Lúa", "Cà phê", ...
+  description String?  @db.Text
+  startDate   DateTime @map("start_date") @db.Date
+  endDate     DateTime @map("end_date") @db.Date
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  seasonLots SeasonLot[]
+
+  @@map("seasons")
+}
+
+/// Lô tham gia mùa vụ — Trung tâm của toàn hệ thống
+/// Chứa Quarantine Engine fields
+model SeasonLot {
+  id       String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  seasonId String @map("season_id") @db.Uuid
+  lotId    String @map("lot_id") @db.Uuid
+
+  /// Nông dân phụ trách trong mùa vụ này (snapshot tại thời điểm tạo)
+  farmerId String? @map("farmer_id") @db.Uuid
+
+  plannedAreaM2 Decimal? @map("planned_area_m2") @db.Decimal(12, 2)
+  notes         String?  @db.Text
+
+  // ── Quarantine Engine Fields ──────────────────────────────────────────────
+
+  /// Ngày phun thuốc BVTV cuối cùng (auto-update từ material_usages khi type = PESTICIDE)
+  lastPesticideDate DateTime? @map("last_pesticide_date") @db.Date
+
+  /// Max(quarantineDays) của tất cả vật tư đã sử dụng trong mùa vụ này
+  requiredQuarantineDays Int @default(0) @map("required_quarantine_days")
+
+  /// Computed: lastPesticideDate + requiredQuarantineDays (stored để query nhanh)
+  safeDateToHarvest DateTime? @map("safe_date_to_harvest") @db.Date
+
+  /// Trạng thái cách ly hiện tại
+  quarantineStatus QuarantineStatus @default(NOT_APPLIED) @map("quarantine_status")
+
+  /// Thời điểm quarantine engine chạy lần cuối
+  quarantineUpdatedAt DateTime? @map("quarantine_updated_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  season          Season               @relation(fields: [seasonId], references: [id], onDelete: Restrict)
+  lot             Lot                  @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  diaryEntries    DiaryEntry[]
+  materialUsages  MaterialUsage[]
+  harvestRecord   HarvestRecord?
+  qrCodes         QrCode[]
+
+  @@unique([seasonId, lotId])
+  @@index([quarantineStatus])
+  @@index([safeDateToHarvest])
+  @@map("season_lots")
+}
+
+// =============================================================================
+// NHÓM 4 — NHẬT KÝ SẢN XUẤT (E-DIARY)
+// =============================================================================
+
+/// Nhật ký công việc hàng ngày trên lô trong mùa vụ
+model DiaryEntry {
+  id           String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  seasonLotId  String      @map("season_lot_id") @db.Uuid
+  authorId     String      @map("author_id") @db.Uuid
+
+  workDate     DateTime    @map("work_date") @db.Date
+  workType     WorkType    @map("work_type")
+  status       DiaryStatus @default(DRAFT)
+  title        String?     @db.VarChar(255)
+  description  String?     @db.Text
+  laborCount   Int?        @map("labor_count")
+
+  /// Nhiệt độ (°C), độ ẩm (%) tại thời điểm làm việc
+  weatherTemp  Decimal?    @map("weather_temp") @db.Decimal(4, 1)
+  weatherHumid Decimal?    @map("weather_humid") @db.Decimal(5, 2)
+  weatherNote  String?     @map("weather_note") @db.VarChar(255)
+
+  // ── Workflow Fields ───────────────────────────────────────────────────────
+  submittedAt  DateTime?   @map("submitted_at")
+  confirmedAt  DateTime?   @map("confirmed_at")
+  confirmerId  String?     @map("confirmer_id") @db.Uuid
+  rejectReason String?     @map("reject_reason") @db.Text
+  lockedAt     DateTime?   @map("locked_at")
+
+  // ── Offline Sync Fields ───────────────────────────────────────────────────
+  /// UUID v4 do client tạo — dùng để dedup khi sync offline
+  clientTempId String?     @unique @map("client_temp_id") @db.Uuid
+
+  /// null = chưa sync, có giá trị = đã sync lên server
+  syncedAt     DateTime?   @map("synced_at")
+
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  seasonLot    SeasonLot         @relation(fields: [seasonLotId], references: [id], onDelete: Restrict)
+  author       User              @relation("DiaryAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  confirmer    User?             @relation("DiaryConfirmer", fields: [confirmerId], references: [id], onDelete: SetNull)
+  attachments  DiaryAttachment[]
+  materialUsages MaterialUsage[]
+
+  @@index([authorId, seasonLotId], name: "idx_diary_entries_author_seasonlot")
+  @@index([workDate])
+  @@index([status])
+  @@map("diary_entries")
+}
+
+/// Ảnh minh chứng đính kèm nhật ký (cascade delete)
+model DiaryAttachment {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  diaryEntryId String   @map("diary_entry_id") @db.Uuid
+  fileUrl      String   @map("file_url") @db.VarChar(500)
+  fileType     String?  @map("file_type") @db.VarChar(50)  // "image/jpeg", "image/png"
+  fileSize     Int?     @map("file_size")                   // bytes
+  caption      String?  @db.VarChar(255)
+  sortOrder    Int      @default(0) @map("sort_order")
+  uploadedAt   DateTime @default(now()) @map("uploaded_at")
+
+  // Relations
+  diaryEntry DiaryEntry @relation(fields: [diaryEntryId], references: [id], onDelete: Cascade)
+
+  @@map("diary_attachments")
+}
+
+// =============================================================================
+// NHÓM 5 — KHO VẬT TƯ (INVENTORY)
+// =============================================================================
+
+/// Danh mục vật tư: phân bón, thuốc BVTV, hạt giống
+model Material {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code               String   @unique @db.VarChar(30)
+  name               String   @db.VarChar(255)
+  category           String   @db.VarChar(100) // "PESTICIDE", "FERTILIZER", "SEED", "OTHER"
+  unit               String   @db.VarChar(30)  // "kg", "lít", "gói"
+
+  /// Nhà sản xuất / nhà cung cấp
+  manufacturer       String?  @db.VarChar(255)
+  registrationNo     String?  @map("registration_no") @db.VarChar(100) // Số đăng ký
+
+  /// ⭐ Nguồn gốc tính thời gian cách ly (ngày)
+  /// Dùng để tính requiredQuarantineDays trong SeasonLot
+  quarantineDays     Int      @default(0) @map("quarantine_days")
+
+  activeIngredient   String?  @map("active_ingredient") @db.Text  // Hoạt chất
+  concentration      String?  @db.VarChar(100)                     // Hàm lượng (ví dụ: "5%")
+  notes              String?  @db.Text
+  isActive           Boolean  @default(true) @map("is_active")
+
+  /// Tồn kho hiện tại (denormalized — cập nhật theo inventory_transactions)
+  currentStock       Decimal  @default(0) @map("current_stock") @db.Decimal(12, 3)
+  minStockAlert      Decimal? @map("min_stock_alert") @db.Decimal(12, 3)
+
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  inventoryTransactions InventoryTransaction[]
+  materialUsages        MaterialUsage[]
+
+  @@map("materials")
+}
+
+/// Sổ cái Nhập-Xuất-Tồn (Ledger pattern với balanceAfter)
+model InventoryTransaction {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  materialId      String          @map("material_id") @db.Uuid
+  transactionType TransactionType @map("transaction_type")
+
+  /// Số lượng giao dịch (luôn dương; chiều +/- xác định bởi transactionType)
+  quantity        Decimal         @db.Decimal(12, 3)
+
+  /// Tồn kho sau giao dịch này (running total)
+  balanceAfter    Decimal         @map("balance_after") @db.Decimal(12, 3)
+
+  unitPrice       Decimal?        @map("unit_price") @db.Decimal(15, 2)
+  totalValue      Decimal?        @map("total_value") @db.Decimal(15, 2)
+
+  referenceNo     String?         @map("reference_no") @db.VarChar(100) // Số phiếu nhập/xuất
+  supplierId      String?         @map("supplier_id") @db.Uuid          // FK tương lai
+  notes           String?         @db.Text
+
+  transactedAt    DateTime        @map("transacted_at") @db.Date
+  createdBy       String?         @map("created_by") @db.Uuid
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  // Relations
+  material Material @relation(fields: [materialId], references: [id], onDelete: Restrict)
+
+  @@index([materialId, transactedAt(sort: Desc)])
+  @@map("inventory_transactions")
+}
+
+/// Chi tiết vật tư sử dụng trong 1 diary entry
+model MaterialUsage {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  diaryEntryId    String   @map("diary_entry_id") @db.Uuid
+  seasonLotId     String   @map("season_lot_id") @db.Uuid
+  materialId      String   @map("material_id") @db.Uuid
+  quantity        Decimal  @db.Decimal(12, 3)
+  unit            String   @db.VarChar(30)
+
+  /// ⭐ Dùng để tính lastPesticideDate trong SeasonLot
+  /// Thường = DiaryEntry.workDate, lưu riêng để query độc lập
+  applicationDate DateTime @map("application_date") @db.Date
+
+  dilutionRatio   String?  @map("dilution_ratio") @db.VarChar(50) // Tỉ lệ pha loãng
+  targetPest      String?  @map("target_pest") @db.VarChar(255)   // Đối tượng phòng trừ
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relations
+  diaryEntry DiaryEntry @relation(fields: [diaryEntryId], references: [id], onDelete: Cascade)
+  seasonLot  SeasonLot  @relation(fields: [seasonLotId], references: [id], onDelete: Restrict)
+  material   Material   @relation(fields: [materialId], references: [id], onDelete: Restrict)
+
+  @@index([seasonLotId, applicationDate(sort: Desc)], name: "idx_material_usages_seasonlot_date")
+  @@map("material_usages")
+}
+
+// =============================================================================
+// NHÓM 6 — THU HOẠCH & CHẤT LƯỢNG
+// =============================================================================
+
+/// Kết quả thu hoạch — 1-1 với SeasonLot
+model HarvestRecord {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  seasonLotId     String    @unique @map("season_lot_id") @db.Uuid
+
+  harvestDate     DateTime  @map("harvest_date") @db.Date
+
+  /// Sản lượng thực tế (kg)
+  actualYieldKg   Decimal   @map("actual_yield_kg") @db.Decimal(10, 2)
+
+  /// Sản lượng kế hoạch (kg) — để so sánh
+  plannedYieldKg  Decimal?  @map("planned_yield_kg") @db.Decimal(10, 2)
+
+  /// Đánh giá chất lượng tổng thể: "A", "B", "C", "REJECT"
+  overallGrade    String?   @map("overall_grade") @db.VarChar(10)
+
+  /// Tỉ lệ hao hụt (%)
+  lossRate        Decimal?  @map("loss_rate") @db.Decimal(5, 2)
+
+  storageLocation String?   @map("storage_location") @db.VarChar(255)
+  notes           String?   @db.Text
+  recordedBy      String?   @map("recorded_by") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  seasonLot     SeasonLot     @relation(fields: [seasonLotId], references: [id], onDelete: Restrict)
+  qualityTests  QualityTest[]
+
+  @@map("harvest_records")
+}
+
+/// Kết quả kiểm nghiệm chất lượng (dư lượng thuốc, kim loại nặng, v.v.)
+model QualityTest {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  harvestRecordId  String    @map("harvest_record_id") @db.Uuid
+
+  testType         String    @map("test_type") @db.VarChar(100)   // "PESTICIDE_RESIDUE", "HEAVY_METAL"
+  testDate         DateTime  @map("test_date") @db.Date
+  labName          String?   @map("lab_name") @db.VarChar(255)
+  labCode          String?   @map("lab_code") @db.VarChar(100)
+
+  /// Kết quả chi tiết dạng JSON: [{ "parameter": "Chlorpyrifos", "value": 0.01, "limit": 0.1, "unit": "mg/kg", "pass": true }]
+  results          Json      @default("[]")
+
+  isPassed         Boolean   @map("is_passed")
+
+  /// URL scan PDF chứng nhận
+  certificationUrl String?   @map("certification_url") @db.VarChar(500)
+
+  expiryDate       DateTime? @map("expiry_date") @db.Date
+  notes            String?   @db.Text
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  harvestRecord HarvestRecord @relation(fields: [harvestRecordId], references: [id], onDelete: Cascade)
+
+  @@map("quality_tests")
+}
+
+// =============================================================================
+// NHÓM 7 — QR CODE ENGINE
+// =============================================================================
+
+/// QR Code truy xuất nguồn gốc — Snapshot tại thời điểm phát hành
+model QrCode {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  seasonLotId  String    @map("season_lot_id") @db.Uuid
+
+  /// Token ngẫu nhiên dùng cho URL công khai (UUID v4 hoặc CSPRNG)
+  token        String    @unique @db.VarChar(100)
+
+  /// URL công khai: https://cropcoop.vn/trace/{token}
+  publicUrl    String?   @map("public_url") @db.VarChar(500)
+
+  status       QrStatus  @default(PENDING)
+
+  // ── 3 Điều kiện xuất QR (snapshot) ───────────────────────────────────────
+
+  /// Điều kiện 1: Nhật ký đầy đủ và đã được xác nhận
+  conditionDiaryOk      Boolean  @default(false) @map("condition_diary_ok")
+
+  /// Điều kiện 2: Đã qua thời gian cách ly an toàn
+  conditionQuarantineOk Boolean  @default(false) @map("condition_quarantine_ok")
+
+  /// Điều kiện 3: Đạt chuẩn chất lượng (quality_tests.is_passed = true)
+  conditionQualityOk    Boolean  @default(false) @map("condition_quality_ok")
+
+  // ── Snapshot Data ─────────────────────────────────────────────────────────
+
+  /// Dữ liệu snapshot lô/mùa vụ/nông dân tại thời điểm phát hành QR
+  snapshotData Json?    @map("snapshot_data")
+
+  // ── Approval ─────────────────────────────────────────────────────────────
+  approvedBy   String?   @map("approved_by") @db.Uuid
+  approvedAt   DateTime? @map("approved_at")
+  revokedBy    String?   @map("revoked_by") @db.Uuid
+  revokedAt    DateTime? @map("revoked_at")
+  revokeReason String?   @map("revoke_reason") @db.Text
+
+  /// Số lần scan QR (thống kê)
+  scanCount    Int       @default(0) @map("scan_count")
+  lastScannedAt DateTime? @map("last_scanned_at")
+
+  expiresAt    DateTime? @map("expires_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  seasonLot SeasonLot @relation(fields: [seasonLotId], references: [id], onDelete: Restrict)
+  orders    Order[]
+
+  @@index([token], name: "idx_qrcodes_token")
+  @@index([status])
+  @@map("qr_codes")
+}
+
+// =============================================================================
+// NHÓM 8 — ĐƠN HÀNG (ORDERS)
+// =============================================================================
+
+/// Đơn hàng từ Public Portal — Người mua quét QR và đặt hàng
+model Order {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  qrCodeId    String      @map("qr_code_id") @db.Uuid
+  orderNo     String      @unique @map("order_no") @db.VarChar(50)
+
+  // ── Buyer Information (từ Public Portal form) ─────────────────────────────
+  buyerName   String      @map("buyer_name") @db.VarChar(150)
+  buyerPhone  String      @map("buyer_phone") @db.VarChar(20)
+  buyerEmail  String?     @map("buyer_email") @db.VarChar(255)
+  buyerAddress String?    @map("buyer_address") @db.Text
+
+  /// Số lượng đặt mua (kg)
+  quantityKg  Decimal     @map("quantity_kg") @db.Decimal(10, 2)
+
+  /// Đơn giá thoả thuận
+  unitPrice   Decimal?    @map("unit_price") @db.Decimal(15, 2)
+  totalAmount Decimal?    @map("total_amount") @db.Decimal(15, 2)
+
+  status      OrderStatus @default(NEW)
+  note        String?     @db.Text
+
+  deliveryDate DateTime?  @map("delivery_date") @db.Date
+  confirmedAt DateTime?   @map("confirmed_at")
+  confirmedBy String?     @map("confirmed_by") @db.Uuid
+  cancelReason String?    @map("cancel_reason") @db.Text
+
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  qrCode QrCode @relation(fields: [qrCodeId], references: [id], onDelete: Restrict)
+
+  @@index([qrCodeId])
+  @@index([status])
+  @@map("orders")
+}
+
+// =============================================================================
+// NHÓM 9 — AUDIT LOG
+// =============================================================================
+
+/// Nhật ký thay đổi hệ thống — Immutable, dùng BigInt ID do volume cao
+model AuditLog {
+  /// BigInt tự tăng để xử lý volume cao hiệu quả hơn UUID
+  id          BigInt     @id @default(autoincrement())
+
+  userId      String?    @map("user_id") @db.Uuid
+  entityType  EntityType @map("entity_type")
+  entityId    String     @map("entity_id") @db.VarChar(100) // UUID hoặc BigInt dạng string
+  action      String     @db.VarChar(50)   // "CREATE", "UPDATE", "DELETE", "APPROVE", ...
+
+  /// Giá trị trước khi thay đổi
+  oldValues   Json?      @map("old_values")
+
+  /// Giá trị sau khi thay đổi
+  newValues   Json?      @map("new_values")
+
+  /// IP và User-Agent của request
+  ipAddress   String?    @map("ip_address") @db.VarChar(45)
+  userAgent   String?    @map("user_agent") @db.Text
+
+  /// Thông tin bổ sung (ví dụ: lý do từ chối)
+  metadata    Json?
+
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  /// Không cho phép UPDATE hay DELETE — enforce ở application layer + DB trigger
+  @@index([entityType, entityId, createdAt(sort: Desc)], name: "idx_audit_logs_entity")
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+// =============================================================================
+// NHÓM 10 — SYSTEM CONFIG
+// =============================================================================
+
+/// Key-value store cho cấu hình nền hệ thống
+model SystemConfig {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key         String   @unique @db.VarChar(100)
+
+  /// Giá trị (có thể là string, number, JSON object — tuỳ key)
+  value       String   @db.Text
+
+  /// Kiểu dữ liệu của value: "STRING", "NUMBER", "BOOLEAN", "JSON"
+  valueType   String   @default("STRING") @map("value_type") @db.VarChar(20)
+
+  description String?  @db.Text
+  group       String?  @db.VarChar(50) // "GENERAL", "QUARANTINE", "NOTIFICATION", "BRANDING"
+  isPublic    Boolean  @default(false) @map("is_public") // Có expose ra Public Portal không
+
+  updatedBy   String?  @map("updated_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([group])
+  @@map("system_configs")
+}
+
