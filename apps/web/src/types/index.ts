@@ -1,126 +1,162 @@
-export type WorkType =
-  | 'PLOWING'
-  | 'SOWING'
-  | 'FERTILIZING'
-  | 'PESTICIDE'
-  | 'IRRIGATION'
-  | 'WEEDING'
-  | 'HARVESTING'
-  | 'OTHER'
+// =============================================================================
+// CROP COOP / LIVESTOCK COOP — Type Definitions for 10 Core Modules
+// HTX Chăn Nuôi & Truy Xuất Nguồn Gốc Số
+// =============================================================================
 
-export type DiaryStatus = 'DRAFT' | 'SUBMITTED' | 'CONFIRMED' | 'REJECTED' | 'LOCKED'
-export type QuarantineStatus = 'SAFE' | 'WARNING' | 'DANGER' | 'NOT_APPLIED'
-export type RoleCode = 'SUPER_ADMIN' | 'COOP_ADMIN' | 'TECHNICIAN' | 'ACCOUNTANT' | 'FARMER' | 'GUEST'
-export type Id = string
+export type ModuleType =
+  | 'overview'
+  | 'households'     // 1. Quản lý thành viên và hộ chăn nuôi
+  | 'herds'          // 2. Quản lý đàn, nhóm vật nuôi và nguồn giống
+  | 'growth'         // 3. Theo dõi chăm sóc và tăng trưởng (FCR)
+  | 'inventory'      // 4. Quản lý thức ăn, thuốc thú y và vật tư
+  | 'vaccination'    // 5. Lịch tiêm phòng, vệ sinh và khử trùng
+  | 'health'         // 6. Theo dõi sức khỏe, dịch bệnh và điều trị
+  | 'movements'      // 7. Quản lý nhập đàn, xuất đàn và tiêu thụ
+  | 'traceability'   // 8. Truy xuất nguồn gốc vật nuôi / sản phẩm (QR)
+  | 'orders'         // 9. Quản lý khách hàng, đơn hàng và hợp đồng
+  | 'financials'     // 10. Tổng hợp chi phí, sản lượng và hiệu quả
 
-export interface User {
-  id: Id
-  uid?: string
-  fullName: string
-  roles: RoleCode[]
-  permissions: Record<string, string[]>
+export interface FarmerHousehold {
+  id: string
+  householdCode: string
+  householderName: string
+  phone: string
+  address: string
+  commune: string
+  capacityHead: number
+  currentHeadCount: number
+  bioSecurityCert: string
+  status: 'ACTIVE' | 'INACTIVE'
 }
 
-export interface SeasonLotSummary {
-  id: Id
-  lotCode: string
-  lotName?: string
-  cropType?: string
-  seasonName?: string
-  farmerName: string
-  lastPesticideDate?: string | null
-  quarantineStatus: QuarantineStatus
-  daysRemaining: number | null
-  safeDateToHarvest: string | null
-  status?: string
+export interface HerdBatch {
+  id: string
+  batchCode: string
+  householdName: string
+  animalType: 'PIG' | 'CATTLE' | 'POULTRY' | 'GOAT'
+  breedName: string
+  currentQuantity: number
+  initialQuantity: number
+  entryDate: string
+  avgCurrentWeightKg: number
+  targetWeightKg: number
+  status: 'RAISING' | 'WITHDRAWAL_WAIT' | 'READY_TO_SELL' | 'SOLD_OUT'
+  safeHarvestDate?: string
+  daysRemainingWithdrawal?: number
 }
 
-export interface QuarantineInfo {
-  seasonLotId: Id
-  lotCode: string
-  lastPesticideDate: string | null
-  requiredQuarantineDays: number | null
-  safeDateToHarvest: string | null
-  today: string
-  daysRemaining: number | null
-  quarantineStatus: QuarantineStatus
-  colorIndicator: 'RED' | 'YELLOW' | 'GREEN' | 'GREY' | 'GRAY'
-  harvestAllowed: boolean
-  warningMessage: string
+export interface GrowthRecord {
+  id: string
+  batchCode: string
+  recordDate: string
+  daysOfAge: number
+  avgWeightKg: number
+  dailyGainGram: number
+  fcr: number
+  recorder: string
 }
 
-export interface MaterialUsageInput {
-  materialId: Id
-  materialName?: string
-  quantityUsed: number
-  unit: string
-  applicationDate: string
-  note?: string
-}
-
-export interface AttachmentInput {
-  fileUrl: string
-  fileType: string
-  caption?: string
-}
-
-export interface DiaryEntryInput {
-  seasonLotId: Id
-  workDate: string
-  workType: WorkType
-  description: string
-  weatherNote?: string
-  laborCount?: number
-  materials: MaterialUsageInput[]
-  attachments: AttachmentInput[]
-}
-
-export interface OfflineDiaryEntry extends DiaryEntryInput {
-  clientTempId: string
-  savedAt: string
-  synced: boolean
-  syncError?: string
-}
-
-export interface DashboardStats {
-  activeSeason: { count: number; name: string }
-  totalLots: number
-  pendingDiaries: number
-  quarantineAlerts: { DANGER: number; WARNING: number; SAFE: number }
-  pendingQRRequests: number
-  pendingOrders: number
-  yieldThisSeason: number
-}
-
-export interface MaterialOption {
-  id: Id
+export interface MaterialItem {
+  id: string
+  code: string
   name: string
+  type: 'FEED' | 'VET_MEDICINE' | 'VACCINE' | 'DISINFECTANT'
   unit: string
-  category: string
-  quarantineDays?: number
+  currentStock: number
+  minStockAlert: number
+  unitPrice: number
+  withdrawalDays: number
+  supplier: string
 }
 
-export interface QuarantineAlertRow {
-  seasonLotId: Id
-  lotCode: string
-  farmerName: string | null
-  lastPesticideDate?: string | null
-  quarantineStatus: QuarantineStatus
-  daysRemaining: number | null
-  safeDateToHarvest: string | null
+export interface VaccinationTask {
+  id: string
+  batchCode: string
+  title: string
+  scheduledDate: string
+  executedDate?: string
+  targetAgeDays: number
+  dosage: string
+  isCompleted: boolean
+  assignedTo: string
 }
 
-export interface DiarySyncItemResult {
-  clientTempId: string
-  serverId?: Id | null
-  status: 'created' | 'duplicate' | 'failed'
-  code?: string | null
-  message?: string | null
+export interface HealthCase {
+  id: string
+  batchCode: string
+  reportedDate: string
+  affectedCount: number
+  condition: 'MONITORING' | 'SICK' | 'TREATED' | 'ISOLATED'
+  symptoms: string
+  diagnosis: string
+  medicineUsed: string
+  withdrawalDays: number
+  safeDate: string
 }
 
-export interface DiarySyncResult {
-  synced: number
-  failed: number
-  results: DiarySyncItemResult[]
-  duplicates: string[]
+export interface HerdMovementItem {
+  id: string
+  batchCode: string
+  type: 'IMPORT' | 'EXPORT_SALE' | 'TRANSFER_PEN' | 'CULLED_DEATH'
+  date: string
+  quantity: number
+  totalWeightKg: number
+  unitPriceKg: number
+  totalValue: number
+  partnerName: string
+}
+
+export interface TraceQrItem {
+  id: string
+  token: string
+  batchCode: string
+  productName: string
+  householdName: string
+  breedName: string
+  entryDate: string
+  harvestDate: string
+  conditionVaccine: boolean
+  conditionWithdrawal: boolean
+  conditionVetChecked: boolean
+  qrStatus: 'ACTIVE' | 'PENDING' | 'REVOKED'
+  scanCount: number
+  publicUrl: string
+}
+
+export interface ContractItem {
+  id: string
+  contractNo: string
+  buyerName: string
+  phone: string
+  contractType: string
+  committedQtyHead: number
+  contractValue: number
+  signedDate: string
+  expiryDate: string
+  status: 'ACTIVE' | 'COMPLETED' | 'CANCELLED'
+}
+
+export interface OrderItem {
+  id: string
+  orderNo: string
+  customerName: string
+  phone: string
+  deliveryDate: string
+  totalAmount: number
+  status: 'CONFIRMED' | 'DELIVERED' | 'PROCESSING' | 'DRAFT'
+}
+
+export interface CostProfitSummary {
+  batchCode: string
+  householdName: string
+  breedCost: number
+  feedCost: number
+  vetCost: number
+  laborCost: number
+  totalCost: number
+  totalRevenue: number
+  netProfit: number
+  fcr: number
+  survivalRate: number
+  profitPerHead: number
 }

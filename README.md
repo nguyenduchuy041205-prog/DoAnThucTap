@@ -1,82 +1,66 @@
-# CROP COOP — Monorepo
+# HTX CHĂN NUÔI MINH TRUNG (TÂY NINH) — HỆ THỐNG QUẢN LÝ CHUYỂN ĐỔI SỐ
 
-> Hệ thống truy xuất nguồn gốc nông sản hợp tác xã
+> Đồ án thực tập: Hệ thống Quản trị HTX Chăn nuôi Tập thể & Hộ chiếu Truy xuất Nguồn gốc Số (Digital Livestock Passport)  
+> Đơn vị áp dụng: **Hợp tác xã Dịch vụ Nông nghiệp Minh Trung** (Tân Phú, Tân Châu, Tây Ninh)  
+> Nghiên cứu thuộc đề tài KH&CN: *“Giải pháp thúc đẩy hoạt động chuyển đổi số trong các HTX nông nghiệp trên địa bàn tỉnh Tây Ninh”*
 
-## Cấu trúc dự án
+---
 
-```
-cropcoop/
-├── apps/
-│   ├── api/          # NestJS REST API (Bước 2+)
-│   └── web/          # React + Vite PWA — Dashboard + E-Diary (Bước 3)
-├── packages/
-│   └── database/     # Prisma schema + migrations + seed
-│       ├── prisma/
-│       │   ├── schema.prisma   ← 17 bảng, 10 enum
-│       │   ├── seed.ts
-│       │   └── migrations/
-│       └── src/
-│           └── index.ts        ← Re-export Prisma client & types
-└── README.md
-```
+## 🌟 10 Phân Hệ Nghiệp Vụ Cốt Lõi
 
-## Khởi động dự án
+1. **Quản lý thành viên và hộ chăn nuôi**:
+   - Định danh hộ chăn nuôi (Mã hộ `HCN-MT-xxx`), chủ hộ, số CCCD, địa chỉ, vị trí GPS trang trại, quy mô sức chứa (con).
+   - Quản lý giấy chứng nhận an toàn sinh học VietGAHP, chuồng trại nội bộ.
+2. **Quản lý đàn, nhóm vật nuôi và nguồn giống**:
+   - Quản lý theo mã đàn (`DAN-2026-xxx`), giống vật nuôi (Heo Duroc F1, Bò 3B Blanc Bleu Belge, Gà thả vườn...).
+   - Theo dõi nguồn gốc cơ sở con giống, giấy kiểm dịch nhập giống, trọng lượng bình quân và mục tiêu xuất chuồng.
+3. **Theo dõi quá trình chăm sóc và tăng trưởng**:
+   - Nhật ký cân đo định kỳ theo ngày tuổi, tính toán tốc độ tăng trọng bình quân ngày (ADG - Average Daily Gain).
+   - Tự động tính toán và cảnh báo hệ số chuyển hóa thức ăn **FCR (Feed Conversion Ratio)**.
+4. **Quản lý thức ăn, thuốc thú y và vật tư**:
+   - Danh mục vật tư: Thức ăn hỗn hợp cám, vắc-xin, thuốc kháng sinh điều trị, hóa chất sát trùng.
+   - Sổ kho Nhập - Xuất - Tồn theo thời gian thực, cảnh báo khi tồn kho chạm ngưỡng tối thiểu.
+5. **Lịch tiêm phòng, vệ sinh và khử trùng**:
+   - Lập lịch tiêm phòng vắc-xin theo phác đồ độ tuổi (Dịch tả, Lở mồm long móng, Tai xanh...).
+   - Lịch phun tiêu độc khử trùng chuồng trại định kỳ, giám sát và đánh dấu hoàn thành.
+6. **Theo dõi sức khỏe, dịch bệnh và điều trị**:
+   - Ghi nhận triệu chứng, chẩn đoán bệnh, buồng cách ly ca bệnh.
+   - Quản lý phác đồ thuốc và **giám sát nghiêm ngặt thời gian ngưng thuốc kháng sinh (Withdrawal Period)** trước khi cho phép xuất chuồng để đảm bảo an toàn vệ sinh thực phẩm.
+7. **Quản lý nhập đàn, xuất đàn và tiêu thụ**:
+   - Phiếu nhập đàn giống (số lượng, đơn giá, kiểm dịch).
+   - Phiếu xuất bán thương phẩm (số lượng, khối lượng cân xuất, giá bán/kg, doanh thu, đơn vị thu mua).
+8. **Truy xuất nguồn gốc vật nuôi hoặc sản phẩm (Hộ chiếu số & QR Code)**:
+   - Cơ chế cấp mã QR Hộ chiếu số kiểm tra 3 điều kiện: (1) Tiêm phòng đầy đủ 100%, (2) Đủ thời gian ngưng kháng sinh, (3) Thú y kiểm dịch an toàn.
+   - Người tiêu dùng và siêu thị quét mã QR để xem minh bạch toàn bộ lý lịch nuôi dưỡng VietGAHP.
+9. **Quản lý khách hàng, đơn hàng và hợp đồng**:
+   - Hợp đồng bao tiêu đầu ra với doanh nghiệp (VISSAN, Bách Hóa Xanh...).
+   - Theo dõi tiến độ giao hàng, đơn đặt hàng và công nợ thanh toán.
+10. **Tổng hợp chi phí, sản lượng và hiệu quả chăn nuôi**:
+    - Báo cáo chi tiết cơ cấu chi phí: Con giống, cám thức ăn, thuốc men & vắc-xin, nhân công, điện nước khấu hao.
+    - Hạch toán doanh thu, lợi nhuận ròng, tỷ lệ sống sót và lợi nhuận trên mỗi đầu con.
 
-### Cách nhanh nhất: Docker Compose
+---
 
-Yêu cầu: Docker Desktop/Engine có Docker Compose và Node.js ≥ 20 nếu chạy lệnh npm ngoài container.
+## 🛠️ Hướng dẫn Khởi chạy Dự án
 
-```bash
-cp .env.example .env
-docker compose up --build
-```
-
-Compose khởi động PostgreSQL, đồng bộ schema Prisma và chạy API cùng web.
-
-- Web: `http://localhost:5173`
-- API: `http://localhost:3000/api/v1`
-- Swagger: `http://localhost:3000/api/docs`
-
-Dừng bằng `Ctrl+C` hoặc `docker compose down`. Dữ liệu PostgreSQL được giữ trong volume `postgres_data`.
-
-### Chạy API và web trực tiếp
-
-```bash
-cp .env.example .env
-npm install
-docker compose up -d db
-npm run db:push
+### 1. Khởi chạy Giao diện Web Dashboard
+```powershell
+cd apps\web
 npm run dev
 ```
+Truy cập vào trình duyệt: `http://localhost:5173` để trải nghiệm đầy đủ 10 phân hệ nghiệp vụ.
 
-`npm run dev` chạy API và web đồng thời. `npm run db:studio` mở Prisma Studio.
-
-## Bước 3: Frontend Dashboard & E-Diary
-
-```bash
-cd apps/web
-cp .env.example .env.local
-pnpm install
-pnpm dev
+### 2. Quản lý Cơ sở Dữ liệu Prisma (PostgreSQL)
+```powershell
+cd packages\database
+npm run db:generate   # Tạo Prisma Client
+npm run db:push       # Đồng bộ cấu trúc 10 phân hệ vào CSDL PostgreSQL
+npm run db:seed       # Nạp dữ liệu mẫu HTX Minh Trung
 ```
 
-Frontend chạy tại `http://localhost:5173`. PWA cache app shell; nhật ký nháp được lưu trong
-LocalStorage và gửi theo batch `POST /diary/sync` khi kết nối trở lại. Dashboard hiện dùng dữ liệu
-demo cho đến khi các endpoint báo cáo được triển khai. Ảnh chọn trong form được giữ offline dạng
-data URL; cần endpoint upload phía API để lưu ảnh lâu dài và trả URL CDN.
-
-## Schema Overview — 17 bảng, 10 nhóm
-
-| Nhóm | Bảng | Mô tả |
-|------|------|-------|
-| 1 — Auth | roles, users, user_roles | RBAC với JSON permissions |
-| 2 — Land | zones, lots, farmer_lots | Vùng trồng + RLS nông dân |
-| 3 — Season | seasons, season_lots | Kế hoạch + Quarantine Engine |
-| 4 — Diary | diary_entries, diary_attachments | E-Diary + Offline Sync |
-| 5 — Inventory | materials, inventory_transactions, material_usages | Kho vật tư + Ledger |
-| 6 — Harvest | harvest_records, quality_tests | Thu hoạch + Kiểm nghiệm |
-| 7 — QR | qr_codes | QR Engine (3 điều kiện) |
-| 8 — Orders | orders | Đơn hàng Public Portal |
-| 9 — Audit | audit_logs | Immutable BigInt ledger |
-| 10 — Config | system_configs | Key-value config store |
-
+### 3. Công cụ Tự động hóa Git
+Chạy trực tiếp file helper đã tạo:
+```powershell
+.\git-flow
+```
+hoặc nhấp đúp chuột vào `git-flow.bat`.

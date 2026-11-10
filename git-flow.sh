@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # =============================================================================
-# CROP COOP — Git Workflow Automation Script
+# HTX MINH TRUNG — Git Workflow Automation Script
 # Tối ưu hóa các thao tác Git thường dùng
 # Cách chạy: 
 #   - Tương tác qua Menu: ./git-flow.sh hoặc bash git-flow.sh
@@ -44,7 +44,7 @@ get_current_branch() {
 
 # 1. Trạng thái & So sánh (Status & Diff)
 fn_status() {
-  echo -e "\n${CYAN}${BOLD}=== TRẠNG THÁI CÁC FILE (git status -s) ===${NC}"
+  echo -e "\n${CYAN}${BOLD}=== TRẠNG THÁI CÁC FILE (git status) ===${NC}"
   git status
 }
 
@@ -112,21 +112,19 @@ fn_remote_add() {
 fn_push() {
   CURRENT_BRANCH=$(get_current_branch)
   echo -e "\n${CYAN}=== PUSH CODE LÊN GITHUB ===${NC}"
-  read -p "Tên nhánh muốn push [Mặc định: $CURRENT_BRANCH]: " branch
-  branch=${branch:-$CURRENT_BRANCH}
-  
-  echo -e "${YELLOW}Đang đẩy code lên origin/$branch...${NC}"
-  git push -u origin "$branch"
+  read -p "Tên nhánh muốn push [Mặc định: $CURRENT_BRANCH]: " push_branch
+  push_branch=${push_branch:-$CURRENT_BRANCH}
+  echo -e "${YELLOW}Đang đẩy code lên origin/$push_branch...${NC}"
+  git push -u origin "$push_branch"
 }
 
 fn_pull() {
   CURRENT_BRANCH=$(get_current_branch)
   echo -e "\n${CYAN}=== PULL CODE MỚI NHẤT TỪ GITHUB ===${NC}"
-  read -p "Tên nhánh muốn pull [Mặc định: $CURRENT_BRANCH]: " branch
-  branch=${branch:-$CURRENT_BRANCH}
-  
-  echo -e "${YELLOW}Đang pull code từ origin/$branch...${NC}"
-  git pull origin "$branch"
+  read -p "Tên nhánh muốn pull [Mặc định: $CURRENT_BRANCH]: " pull_branch
+  pull_branch=${pull_branch:-$CURRENT_BRANCH}
+  echo -e "${YELLOW}Đang pull code từ origin/$pull_branch...${NC}"
+  git pull origin "$pull_branch"
 }
 
 fn_fetch() {
@@ -135,7 +133,7 @@ fn_fetch() {
   echo -e "${GREEN}[✓] Đã tải về lịch sử mới nhất từ GitHub.${NC}"
 }
 
-# 4. Quản lý nhánh (Branching)
+# 4. Quản lý nhánh (Branching) & Checkout
 fn_branch_list() {
   echo -e "\n${CYAN}${BOLD}=== DANH SÁCH NHÁNH HIỆN CÓ ===${NC}"
   git branch -a
@@ -146,6 +144,33 @@ fn_branch_create() {
   if [ -n "$new_branch" ]; then
     git branch "$new_branch"
     echo -e "${GREEN}[✓] Đã tạo nhánh: $new_branch${NC}"
+  fi
+}
+
+fn_checkout_branch() {
+  echo -e "\n${CYAN}Các nhánh hiện có:${NC}"
+  git branch
+  read -p "Nhập tên nhánh muốn checkout: " co_branch
+  if [ -n "$co_branch" ]; then
+    git checkout "$co_branch"
+  fi
+}
+
+fn_checkout_new_branch() {
+  read -p "Nhập tên nhánh mới muốn tạo và checkout ngay (git checkout -b): " co_branch
+  if [ -n "$co_branch" ]; then
+    git checkout -b "$co_branch"
+    echo -e "${GREEN}[✓] Đang làm việc trên nhánh mới: $co_branch${NC}"
+  fi
+}
+
+fn_checkout_file() {
+  echo -e "\n${CYAN}Các file thay đổi chưa commit:${NC}"
+  git status -s
+  read -p "Nhập tên file muốn hủy thay đổi (git checkout -- <file>): " file_path
+  if [ -n "$file_path" ]; then
+    git checkout -- "$file_path"
+    echo -e "${GREEN}[✓] Đã hủy bỏ thay đổi của: $file_path${NC}"
   fi
 }
 
@@ -225,7 +250,7 @@ fn_restore_file() {
   git status -s
   read -p "Nhập tên file muốn khôi phục về trạng thái cũ: " file_path
   if [ -n "$file_path" ]; then
-    git checkout -- "$file_path" 2>/dev/null || git restore "$file_path"
+    git restore "$file_path"
     echo -e "${GREEN}[✓] Đã hủy bỏ các thay đổi của: $file_path${NC}"
   fi
 }
@@ -251,7 +276,7 @@ fn_stash_list() {
   git stash list
 }
 
-# 7. Quick Sync: Add All -> Commit -> Push (Tính năng tiện lợi nhất)
+# 7. Quick Sync: Add All -> Commit -> Push
 fn_quick_sync() {
   CURRENT_BRANCH=$(get_current_branch)
   echo -e "\n${MAGENTA}${BOLD}=== ⚡ QUICK SYNC (ADD ALL + COMMIT + PUSH) ===${NC}"
@@ -310,7 +335,7 @@ fi
 while true; do
   CURRENT_BRANCH=$(get_current_branch)
   echo -e "\n${BLUE}=================================================================${NC}"
-  echo -e "${BOLD}${GREEN}               🌾 CROP COOP — GIT WORKFLOW HELPER               ${NC}"
+  echo -e "${BOLD}${GREEN}               🌾 HTX MINH TRUNG — GIT WORKFLOW HELPER           ${NC}"
   echo -e "${BLUE}=================================================================${NC}"
   echo -e " Nhánh hiện tại: ${YELLOW}${BOLD}$CURRENT_BRANCH${NC}"
   echo -e "${BLUE}-----------------------------------------------------------------${NC}"
@@ -333,29 +358,32 @@ while true; do
   echo -e "  ${CYAN}10.${NC} git pull   (Tải & gộp code mới về)"
   echo -e "  ${CYAN}11.${NC} git fetch  (Chỉ tải thông tin mới từ GitHub)"
   echo ""
-  echo -e " ${BOLD}4. QUẢN LÝ NHÁNH (BRANCH):${NC}"
+  echo -e " ${BOLD}4. QUẢN LÝ NHÁNH & CHECKOUT:${NC}"
   echo -e "  ${CYAN}12.${NC} git branch (Liệt kê các nhánh)"
-  echo -e "  ${CYAN}13.${NC} Tạo nhánh mới"
-  echo -e "  ${CYAN}14.${NC} Chuyển nhánh (git switch)"
-  echo -e "  ${CYAN}15.${NC} Tạo & chuyển sang nhánh mới ngay (git switch -c)"
-  echo -e "  ${CYAN}16.${NC} Gộp nhánh (git merge)"
-  echo -e "  ${CYAN}17.${NC} Xóa nhánh (git branch -d)"
+  echo -e "  ${CYAN}13.${NC} git branch <tên> (Tạo nhánh mới)"
+  echo -e "  ${CYAN}14.${NC} git checkout <nhánh> (Chuyển nhánh)"
+  echo -e "  ${CYAN}15.${NC} git checkout -b <nhánh> (Tạo & chuyển nhánh ngay)"
+  echo -e "  ${CYAN}16.${NC} git checkout -- <file> (Hủy thay đổi 1 file)"
+  echo -e "  ${CYAN}17.${NC} git switch <nhánh> (Chuyển nhánh mới)"
+  echo -e "  ${CYAN}18.${NC} git switch -c <nhánh> (Tạo & chuyển nhánh mới)"
+  echo -e "  ${CYAN}19.${NC} git merge (Gộp nhánh)"
+  echo -e "  ${CYAN}20.${NC} git branch -d (Xóa nhánh)"
   echo ""
   echo -e " ${BOLD}5. LỊCH SỬ & HOÀN TÁC (HISTORY & UNDO):${NC}"
-  echo -e "  ${CYAN}18.${NC} git log --oneline (Xem lịch sử rút gọn)"
-  echo -e "  ${CYAN}19.${NC} git log chi tiết"
-  echo -e "  ${CYAN}20.${NC} git reset --soft (Hủy commit, giữ lại code)"
-  echo -e "  ${RED}21.${NC} git reset --hard (HỦY COMMIT & XÓA SẠCH CODE - Nguy hiểm)"
-  echo -e "  ${CYAN}22.${NC} Khôi phục 1 file về trạng thái cũ"
+  echo -e "  ${CYAN}21.${NC} git log --oneline (Xem lịch sử rút gọn)"
+  echo -e "  ${CYAN}22.${NC} git log chi tiết"
+  echo -e "  ${CYAN}23.${NC} git reset --soft (Hủy commit, giữ lại code)"
+  echo -e "  ${RED}24.${NC} git reset --hard (HỦY COMMIT & XÓA SẠCH CODE - Nguy hiểm)"
+  echo -e "  ${CYAN}25.${NC} git restore <file> (Khôi phục 1 file)"
   echo ""
   echo -e " ${BOLD}6. BỘ NHỚ TẠM (STASH):${NC}"
-  echo -e "  ${CYAN}23.${NC} git stash (Lưu tạm code đang làm dở)"
-  echo -e "  ${CYAN}24.${NC} git stash pop (Lấy lại code đã lưu tạm)"
-  echo -e "  ${CYAN}25.${NC} git stash list (Xem danh sách stash)"
+  echo -e "  ${CYAN}26.${NC} git stash (Lưu tạm code đang làm dở)"
+  echo -e "  ${CYAN}27.${NC} git stash pop (Lấy lại code đã lưu tạm)"
+  echo -e "  ${CYAN}28.${NC} git stash list (Xem danh sách stash)"
   echo ""
   echo -e "   ${RED}0. Thoát${NC}"
   echo -e "${BLUE}=================================================================${NC}"
-  read -p "👉 Nhập lựa chọn của bạn [0-25]: " choice
+  read -p "👉 Nhập lựa chọn của bạn [0-28]: " choice
 
   case "$choice" in
     1) fn_quick_sync ;;
@@ -371,23 +399,25 @@ while true; do
     11) fn_fetch ;;
     12) fn_branch_list ;;
     13) fn_branch_create ;;
-    14) fn_branch_switch ;;
-    15) fn_branch_create_and_switch ;;
-    16) fn_branch_merge ;;
-    17) fn_branch_delete ;;
-    18) fn_log_oneline ;;
-    19) fn_log_full ;;
-    20) fn_reset_soft ;;
-    21) fn_reset_hard ;;
-    22) fn_restore_file ;;
-    23) fn_stash ;;
-    24) fn_stash_pop ;;
-    25) fn_stash_list ;;
+    14) fn_checkout_branch ;;
+    15) fn_checkout_new_branch ;;
+    16) fn_checkout_file ;;
+    17) fn_branch_switch ;;
+    18) fn_branch_create_and_switch ;;
+    19) fn_branch_merge ;;
+    20) fn_branch_delete ;;
+    21) fn_log_oneline ;;
+    22) fn_log_full ;;
+    23) fn_reset_soft ;;
+    24) fn_reset_hard ;;
+    25) fn_restore_file ;;
+    26) fn_stash ;;
+    27) fn_stash_pop ;;
+    28) fn_stash_list ;;
     0) echo -e "${GREEN}Tạm biệt! Chúc bạn làm việc hiệu quả.${NC}"; exit 0 ;;
-    *) echo -e "${RED}[!] Lựa chọn không hợp lệ. Vui lòng chọn từ 0 đến 25.${NC}" ;;
+    *) echo -e "${RED}[!] Lựa chọn không hợp lệ. Vui lòng chọn từ 0 đến 28.${NC}" ;;
   esac
 
   echo ""
   read -p "Nhấn [Enter] để quay lại menu chính..." dummy
 done
-
