@@ -122,6 +122,34 @@ function Invoke-BranchCreate {
     }
 }
 
+function Invoke-CheckoutBranch {
+    Show-Header "CHUYEN NHANH (git checkout <nhanh>)"
+    git branch
+    $name = Read-Host "Nhap ten nhanh muon checkout"
+    if ($name) {
+        git checkout $name
+    }
+}
+
+function Invoke-CheckoutNewBranch {
+    Show-Header "TAO VA CHUYEN NHANH NGAY (git checkout -b <nhanh>)"
+    $name = Read-Host "Nhap ten nhanh moi muon tao va checkout sang ngay"
+    if ($name) {
+        git checkout -b $name
+        Write-Host "[OK] Da tao va chuyen sang nhanh moi: $name" -ForegroundColor Green
+    }
+}
+
+function Invoke-CheckoutFile {
+    Show-Header "HUY THAY DOI CUA 1 FILE (git checkout -- <file>)"
+    git status -s
+    $file = Read-Host "`nNhap ten file muon hoan tac ve commit gan nhat"
+    if ($file) {
+        git checkout -- $file
+        Write-Host "[OK] Da huy bo thay doi cua file: $file" -ForegroundColor Green
+    }
+}
+
 function Invoke-BranchSwitch {
     git branch
     $name = Read-Host "Nhap ten nhanh muon chuyen den"
@@ -192,7 +220,7 @@ function Invoke-ResetHard {
 
 function Invoke-RestoreFile {
     git status -s
-    $file = Read-Host "`nNhap ten file muon khoi phuc ve trang thai cu"
+    $file = Read-Host "`nNhap ten file muon khoi phuc ve trang thai cu (git restore)"
     if ($file) {
         git restore $file
         Write-Host "[OK] Da huy bo cac thay doi cua: $file" -ForegroundColor Green
@@ -265,32 +293,35 @@ if ($Action -eq "sync" -or $Action -eq "push") {
 }
 
 $menuItems = @(
-    "[QUICK SYNC]  Add tat ca + Commit + Push len GitHub",
-    "[STATUS]      git status - Xem trang thai cac file",
-    "[DIFF]        git diff - Xem chi tiet code thay doi",
-    "[ADD ALL]     git add . - Them tat ca file thay doi",
-    "[ADD FILE]    git add <file> - Them 1 file cu the",
-    "[COMMIT]      git commit -m - Tao commit moi kem mo ta",
-    "[AMEND]       git commit --amend - Sua commit gan nhat",
-    "[PUSH]        git push - Day commit len GitHub",
-    "[PULL]        git pull - Tai va gop code moi tu GitHub",
-    "[FETCH]       git fetch - Chi tai thong tin moi tu GitHub",
-    "[REMOTE]      git remote add/set origin - Dat URL GitHub",
-    "[BRANCH-LS]   git branch - Liet ke tat ca nhanh",
-    "[BRANCH-NEW]  git branch <ten> - Tao nhanh moi",
-    "[SWITCH]      git switch - Chuyen sang nhanh khac",
-    "[SW-NEW]      git switch -c - Tao va chuyen nhanh ngay",
-    "[MERGE]       git merge - Gop nhanh khac vao nhanh hien tai",
-    "[DEL-BRANCH]  git branch -d - Xoa nhanh local",
-    "[LOG-SHORT]   git log --oneline - Xem lich su rut gon",
-    "[LOG-FULL]    git log - Xem lich su chi tiet",
-    "[UNDO-SOFT]   git reset --soft HEAD~1 - Huy commit (giu code)",
-    "[UNDO-HARD]   git reset --hard HEAD~1 - Huy commit va xoa code",
-    "[RESTORE]     git restore <file> - Khoi phuc 1 file",
-    "[STASH]       git stash - Luu tam code do dang",
-    "[STASH-POP]   git stash pop - Lay lai code luu tam",
-    "[STASH-LIST]  git stash list - Xem danh sach stash",
-    "[THOAT]       Thoat chuong trinh"
+    "[QUICK SYNC]    Add tat ca + Commit + Push len GitHub",
+    "[STATUS]        git status - Xem trang thai cac file",
+    "[DIFF]          git diff - Xem chi tiet code thay doi",
+    "[ADD ALL]       git add . - Them tat ca file thay doi",
+    "[ADD FILE]      git add <file> - Them 1 file cu the",
+    "[COMMIT]        git commit -m - Tao commit moi kem mo ta",
+    "[AMEND]         git commit --amend - Sua commit gan nhat",
+    "[PUSH]          git push - Day commit len GitHub",
+    "[PULL]          git pull - Tai va gop code moi tu GitHub",
+    "[FETCH]         git fetch - Chi tai thong tin moi tu GitHub",
+    "[REMOTE]        git remote add/set origin - Dat URL GitHub",
+    "[BRANCH-LS]     git branch - Liet ke tat ca nhanh",
+    "[BRANCH-NEW]    git branch <ten> - Tao nhanh moi",
+    "[CHECKOUT]      git checkout <nhanh> - Chuyen sang nhanh khac",
+    "[CHECKOUT -b]   git checkout -b <nhanh> - Tao va chuyen sang nhanh moi ngay",
+    "[CHECKOUT --]   git checkout -- <file> - Huy bo thay doi 1 file",
+    "[SWITCH]        git switch - Chuyen sang nhanh khac",
+    "[SW-NEW]        git switch -c - Tao va chuyen nhanh ngay",
+    "[MERGE]         git merge - Gop nhanh khac vao nhanh hien tai",
+    "[DEL-BRANCH]    git branch -d - Xoa nhanh local",
+    "[LOG-SHORT]     git log --oneline - Xem lich su rut gon",
+    "[LOG-FULL]      git log - Xem lich su chi tiet",
+    "[UNDO-SOFT]     git reset --soft HEAD~1 - Huy commit (giu code)",
+    "[UNDO-HARD]     git reset --hard HEAD~1 - Huy commit va xoa code",
+    "[RESTORE]       git restore <file> - Khoi phuc 1 file",
+    "[STASH]         git stash - Luu tam code do dang",
+    "[STASH-POP]     git stash pop - Lay lai code luu tam",
+    "[STASH-LIST]    git stash list - Xem danh sach stash",
+    "[THOAT]         Thoat chuong trinh"
 )
 
 function Select-ArrowMenu {
@@ -307,7 +338,7 @@ function Select-ArrowMenu {
 
     if (-not $canUseKeys) {
         Write-Host "`n==============================================================" -ForegroundColor Blue
-        Write-Host "             CROP COOP - GIT WORKFLOW HELPER                  " -ForegroundColor Green
+        Write-Host "          HTX MINH TRUNG - GIT WORKFLOW HELPER                " -ForegroundColor Green
         Write-Host " Nhanh hien tai: $branch" -ForegroundColor Yellow
         Write-Host "==============================================================" -ForegroundColor Blue
         for ($i = 0; $i -lt $count; $i++) {
@@ -325,7 +356,7 @@ function Select-ArrowMenu {
     while ($true) {
         Clear-Host
         Write-Host "======================================================================" -ForegroundColor Blue
-        Write-Host "                  CROP COOP - GIT WORKFLOW HELPER                     " -ForegroundColor Green
+        Write-Host "            HTX MINH TRUNG - GIT WORKFLOW HELPER                      " -ForegroundColor Green
         Write-Host "======================================================================" -ForegroundColor Blue
         Write-Host " Nhanh hien tai: " -NoNewline
         Write-Host "$branch" -ForegroundColor Yellow -NoNewline
@@ -383,19 +414,22 @@ while ($true) {
         10 { Invoke-RemoteAdd }
         11 { Invoke-BranchList }
         12 { Invoke-BranchCreate }
-        13 { Invoke-BranchSwitch }
-        14 { Invoke-BranchCreateAndSwitch }
-        15 { Invoke-BranchMerge }
-        16 { Invoke-BranchDelete }
-        17 { Invoke-LogOneline }
-        18 { Invoke-LogFull }
-        19 { Invoke-ResetSoft }
-        20 { Invoke-ResetHard }
-        21 { Invoke-RestoreFile }
-        22 { Invoke-Stash }
-        23 { Invoke-StashPop }
-        24 { Invoke-StashList }
-        25 { Write-Host "`nTam biet! Chuc ban lam viec hieu qua.`n" -ForegroundColor Green; exit }
+        13 { Invoke-CheckoutBranch }
+        14 { Invoke-CheckoutNewBranch }
+        15 { Invoke-CheckoutFile }
+        16 { Invoke-BranchSwitch }
+        17 { Invoke-BranchCreateAndSwitch }
+        18 { Invoke-BranchMerge }
+        19 { Invoke-BranchDelete }
+        20 { Invoke-LogOneline }
+        21 { Invoke-LogFull }
+        22 { Invoke-ResetSoft }
+        23 { Invoke-ResetHard }
+        24 { Invoke-RestoreFile }
+        25 { Invoke-Stash }
+        26 { Invoke-StashPop }
+        27 { Invoke-StashList }
+        28 { Write-Host "`nTam biet! Chuc ban lam viec hieu qua.`n" -ForegroundColor Green; exit }
         default { exit }
     }
 

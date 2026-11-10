@@ -28,8 +28,13 @@ import {
   HeartHandshake,
   Syringe,
   Wheat,
+  LogIn,
+  UserPlus,
+  LogOut,
+  UserCheck,
+  Lock,
 } from 'lucide-react'
-import { ModuleType, OrderItem } from './types'
+import { ModuleType, OrderItem, RoleCode } from './types'
 import {
   initialHouseholds,
   initialHerds,
@@ -44,15 +49,89 @@ import {
   initialFinancials,
 } from './lib/mockData'
 
+// Định nghĩa User Profile đăng nhập
+interface AuthUser {
+  id: string
+  name: string
+  username: string
+  role: RoleCode
+  roleName: string
+  householdId?: string
+  avatarBadge: string
+}
+
+const mockDemoUsers: AuthUser[] = [
+  {
+    id: 'u1',
+    name: 'Ông Nguyễn Minh Trung',
+    username: 'admin_minhtrung',
+    role: 'COOP_ADMIN',
+    roleName: 'Ban Quản Trị HTX',
+    avatarBadge: 'BQT',
+  },
+  {
+    id: 'u2',
+    name: 'BSTY. Trần Văn An',
+    username: 'vet_an',
+    role: 'VETERINARIAN',
+    roleName: 'Cán Bộ Thú Y & Kỹ Thuật',
+    avatarBadge: 'BSTY',
+  },
+  {
+    id: 'u3',
+    name: 'Kế toán Lê Thị Mai',
+    username: 'acc_mai',
+    role: 'ACCOUNTANT',
+    roleName: 'Kế Toán & Quản Lý Kho',
+    avatarBadge: 'KT',
+  },
+  {
+    id: 'u4',
+    name: 'Nguyễn Văn Thành (Hộ Ba Thành)',
+    username: 'farmer_bathanh',
+    role: 'FARMER_HOUSEHOLD',
+    roleName: 'Hộ Chăn Nuôi Thành Viên',
+    householdId: 'h1',
+    avatarBadge: 'HCN',
+  },
+  {
+    id: 'u5',
+    name: 'Đại diện Cty VISSAN',
+    username: 'buyer_vissan',
+    role: 'BUYER',
+    roleName: 'Khách Hàng / Đối Tác Bao Tiêu',
+    avatarBadge: 'BUY',
+  },
+]
+
 export default function App() {
-  // Navigation mode: 'customer' (Trang chủ khách hàng) hoặc 'admin' (Cổng quản trị HTX 10 phân hệ)
+  // Navigation mode: 'customer' (Trang chủ khách hàng) hoặc 'admin' (Cổng quản trị HTX)
   const [viewMode, setViewMode] = useState<'customer' | 'admin'>('customer')
   const [activeModule, setActiveModule] = useState<ModuleType>('overview')
   const [showAddModal, setShowAddModal] = useState(false)
   const [showQrPreview, setShowQrPreview] = useState(false)
 
+  // Auth States
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(mockDemoUsers[0]) // Mặc định là Ban Quản Trị để dễ demo
+  const [showAuthModal, setShowAuthModal] = useState(false)
+  const [authTab, setAuthTab] = useState<'login' | 'register'>('login')
+
+  // Login form states
+  const [loginUsername, setLoginUsername] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
+  const [loginError, setLoginError] = useState('')
+
+  // Register form states
+  const [regFullName, setRegFullName] = useState('')
+  const [regUsername, setRegUsername] = useState('')
+  const [regPhone, setRegPhone] = useState('')
+  const [regPassword, setRegPassword] = useState('')
+  const [regRole, setRegRole] = useState<RoleCode>('FARMER_HOUSEHOLD')
+  const [regAddress, setRegAddress] = useState('Xã Tân Phú, Huyện Tân Châu, Tây Ninh')
+  const [regSuccessMsg, setRegSuccessMsg] = useState('')
+
   // State data for all 10 modules
-  const [households] = useState(initialHouseholds)
+  const [households, setHouseholds] = useState(initialHouseholds)
   const [herds, setHerds] = useState(initialHerds)
   const [growthList] = useState(initialGrowthRecords)
   const [materials] = useState(initialMaterials)
@@ -68,7 +147,7 @@ export default function App() {
   const [searchToken, setSearchToken] = useState('TRACE-HEO-MT01-2026')
   const [searchedQr, setSearchedQr] = useState<typeof initialTraceQrs[0] | null>(initialTraceQrs[0])
   const [orderSuccess, setOrderSuccess] = useState(false)
-  
+
   // Customer order form
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
@@ -88,6 +167,137 @@ export default function App() {
   const completedVaccines = vaccinations.filter((v) => v.isCompleted).length
   const vaccineRate = Math.round((completedVaccines / vaccinations.length) * 100) || 100
   const totalProfitAll = financials.reduce((sum, f) => sum + f.netProfit, 0)
+
+  // Xử lý đăng nhập thủ công
+  const handleManualLogin = (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoginError('')
+
+    const found = mockDemoUsers.find(
+      (u) => u.username.toLowerCase() === loginUsername.trim().toLowerCase()
+    )
+
+    if (found) {
+      setCurrentUser(found)
+      setShowAuthModal(false)
+      setLoginUsername('')
+      setLoginPassword('')
+      // Nếu là Admin/Thú y/Kế toán thì chuyển sang admin view
+      if (found.role !== 'BUYER') {
+        setViewMode('admin')
+      }
+    } else {
+      setLoginError('Tài khoản hoặc mật khẩu không chính xác! Hãy dùng nút "Đăng nhập thử nghiệm 1 chạm" bên dưới.')
+    }
+  }
+
+  // Xử lý đăng nhập 1 chạm demo theo vai trò
+  const handleQuickLoginAs = (user: AuthUser) => {
+    setCurrentUser(user)
+    setShowAuthModal(false)
+    if (user.role === 'BUYER') {
+      setViewMode('customer')
+    } else {
+      setViewMode('admin')
+    }
+  }
+
+  // Xử lý đăng xuất
+  const handleLogout = () => {
+    setCurrentUser(null)
+    setViewMode('customer')
+  }
+
+  // Xử lý đăng ký tài khoản mới
+  const handleRegister = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!regFullName || !regUsername || !regPassword) {
+      alert('Vui lòng điền đầy đủ các thông tin bắt buộc!')
+      return
+    }
+
+    const roleNameMap: Record<RoleCode, string> = {
+      SUPER_ADMIN: 'Quản trị hệ thống',
+      COOP_ADMIN: 'Ban Quản Trị HTX',
+      VETERINARIAN: 'Cán Bộ Thú Y',
+      ACCOUNTANT: 'Kế Toán & Kho',
+      FARMER_HOUSEHOLD: 'Hộ Chăn Nuôi Thành Viên',
+      BUYER: 'Khách Hàng / Thương Lái',
+      GUEST: 'Khách vãng lai',
+    }
+
+    const newUser: AuthUser = {
+      id: `u-${Date.now()}`,
+      name: regFullName,
+      username: regUsername.trim().toLowerCase(),
+      role: regRole,
+      roleName: roleNameMap[regRole] || 'Thành viên',
+      avatarBadge: regRole === 'FARMER_HOUSEHOLD' ? 'HCN' : regRole === 'BUYER' ? 'BUY' : 'TV',
+    }
+
+    // Nếu đăng ký là hộ chăn nuôi thì tự động bổ sung vào danh sách hộ
+    if (regRole === 'FARMER_HOUSEHOLD') {
+      const newH: typeof households[0] = {
+        id: `h-${Date.now()}`,
+        householdCode: `HCN-MT-00${households.length + 1}`,
+        householderName: regFullName,
+        phone: regPhone || '0918 xxx xxx',
+        address: regAddress,
+        commune: 'Xã Tân Phú, Tân Châu, Tây Ninh',
+        capacityHead: 150,
+        currentHeadCount: 0,
+        bioSecurityCert: 'VietGAHP-DANG-KÝ-MOI',
+        status: 'ACTIVE',
+      }
+      setHouseholds([...households, newH])
+      newUser.householdId = newH.id
+    }
+
+    mockDemoUsers.push(newUser)
+    setCurrentUser(newUser)
+    setRegSuccessMsg('Đăng ký tài khoản thành công! Bạn đã được tự động đăng nhập.')
+
+    setTimeout(() => {
+      setShowAuthModal(false)
+      setRegSuccessMsg('')
+      setRegFullName('')
+      setRegUsername('')
+      setRegPassword('')
+      setRegPhone('')
+      if (newUser.role !== 'BUYER') {
+        setViewMode('admin')
+      }
+    }, 1800)
+  }
+
+  // Kiểm tra phân quyền truy cập từng phân hệ (RBAC)
+  const isModuleAllowed = (moduleId: ModuleType): boolean => {
+    if (!currentUser) return false
+    // Ban Quản trị và Super Admin toàn quyền truy cập 10 phân hệ
+    if (currentUser.role === 'COOP_ADMIN' || currentUser.role === 'SUPER_ADMIN') return true
+
+    // Cán bộ thú y chỉ được xem các phân hệ kỹ thuật & y tế
+    if (currentUser.role === 'VETERINARIAN') {
+      return ['overview', 'herds', 'growth', 'vaccination', 'health', 'traceability'].includes(moduleId)
+    }
+
+    // Kế toán & thủ kho chỉ được xem vật tư, tài chính, đơn hàng
+    if (currentUser.role === 'ACCOUNTANT') {
+      return ['overview', 'inventory', 'movements', 'orders', 'financials'].includes(moduleId)
+    }
+
+    // Hộ chăn nuôi thành viên chỉ xem đàn, tăng trưởng, vắc-xin và sức khỏe
+    if (currentUser.role === 'FARMER_HOUSEHOLD') {
+      return ['overview', 'herds', 'growth', 'vaccination', 'health'].includes(moduleId)
+    }
+
+    // Khách hàng / Thương lái chỉ xem đơn hàng và truy xuất
+    if (currentUser.role === 'BUYER') {
+      return ['overview', 'orders', 'traceability'].includes(moduleId)
+    }
+
+    return moduleId === 'overview'
+  }
 
   // Xử lý tra cứu QR cho khách hàng
   const handleSearchQr = (e: React.FormEvent) => {
@@ -161,7 +371,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans">
       {/* ========================================================================= */}
-      {/* TOP HEADER & CHUYỂN ĐỔI CHẾ ĐỘ: KHÁCH HÀNG / QUẢN TRỊ */}
+      {/* TOP HEADER & CHUYỂN ĐỔI CHẾ ĐỘ: KHÁCH HÀNG / QUẢN TRỊ + AUTH */}
       {/* ========================================================================= */}
       <header className="bg-emerald-800 text-white shadow-md sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
@@ -193,27 +403,68 @@ export default function App() {
                     : 'text-emerald-200 hover:text-white'
                 }`}
               >
-                🌐 Trang Chủ Khách Hàng
+                🌐 Khách Hàng
               </button>
               <button
-                onClick={() => setViewMode('admin')}
+                onClick={() => {
+                  if (!currentUser) {
+                    setShowAuthModal(true)
+                  } else {
+                    setViewMode('admin')
+                  }
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
                   viewMode === 'admin'
                     ? 'bg-white text-emerald-900 shadow-sm'
                     : 'text-emerald-200 hover:text-white'
                 }`}
               >
-                ⚙️ Cổng Quản Trị HTX
+                ⚙️ Quản Trị HTX
               </button>
             </div>
 
-            <button
-              onClick={() => setShowQrPreview(true)}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-sm transition border border-emerald-400/30 hidden md:flex"
-            >
-              <QrCode className="w-4 h-4" />
-              Tra Cứu QR
-            </button>
+            {/* Tài khoản & Nút Đăng nhập / Đăng ký */}
+            {currentUser ? (
+              <div className="flex items-center gap-2 bg-emerald-900/80 px-2.5 py-1.5 rounded-xl border border-emerald-700/70 text-xs">
+                <span className="w-6 h-6 rounded-lg bg-emerald-500 text-white font-bold flex items-center justify-center text-[10px]">
+                  {currentUser.avatarBadge}
+                </span>
+                <div className="hidden md:block text-left">
+                  <div className="font-semibold text-white leading-tight">{currentUser.name}</div>
+                  <div className="text-[10px] text-emerald-300">{currentUser.roleName}</div>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  title="Đăng xuất"
+                  className="text-emerald-300 hover:text-white p-1 hover:bg-emerald-800 rounded transition ml-1"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => {
+                    setAuthTab('login')
+                    setShowAuthModal(true)
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 shadow-sm transition"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  Đăng Nhập
+                </button>
+                <button
+                  onClick={() => {
+                    setAuthTab('register')
+                    setShowAuthModal(true)
+                  }}
+                  className="bg-white/10 hover:bg-white/20 text-emerald-100 border border-white/20 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 transition hidden sm:flex"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  Đăng Ký
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -252,20 +503,22 @@ export default function App() {
                   Dịch Vụ & Bao Tiêu <ArrowRight className="w-4 h-4" />
                 </a>
                 <button
-                  onClick={() => setViewMode('admin')}
+                  onClick={() => {
+                    if (!currentUser) setShowAuthModal(true)
+                    else setViewMode('admin')
+                  }}
                   className="bg-emerald-900/80 hover:bg-emerald-950 text-emerald-200 border border-emerald-600/40 px-4 py-3 rounded-xl text-sm font-medium transition"
                 >
-                  Đăng Nhập Quản Trị
+                  {currentUser ? 'Vào Bảng Quản Trị' : 'Đăng Nhập Quản Trị'}
                 </button>
               </div>
             </div>
 
-            {/* Background blur decorative shapes */}
             <div className="absolute -top-24 -left-24 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
             <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-teal-400/10 rounded-full blur-3xl pointer-events-none" />
           </section>
 
-          {/* 2. Tra Cứu Nguồn Gốc Số Tương Tác Trực Tiếp (Interactive Traceability) */}
+          {/* 2. Tra Cứu Nguồn Gốc Số Tương Tác Trực Tiếp */}
           <section id="trace-section" className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-20">
             <div className="bg-white rounded-3xl shadow-xl border border-slate-200/80 p-6 sm:p-8 space-y-6">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
@@ -283,7 +536,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Form tra cứu */}
               <form onSubmit={handleSearchQr} className="flex gap-2">
                 <div className="relative flex-1">
                   <Search className="w-5 h-5 text-slate-400 absolute left-3.5 top-3" />
@@ -303,7 +555,6 @@ export default function App() {
                 </button>
               </form>
 
-              {/* Kết quả hiển thị Hộ Chiếu Số */}
               {searchedQr && (
                 <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-50/70 to-teal-50/40 border border-emerald-200 space-y-4">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-emerald-200/60 pb-3">
@@ -359,7 +610,7 @@ export default function App() {
             </div>
           </section>
 
-          {/* 3. Dịch Vụ Cung Ứng Của HTX (Service Introduction) */}
+          {/* 3. Dịch Vụ Cung Ứng Của HTX */}
           <section id="services-section" className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
             <div className="text-center space-y-2">
               <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full uppercase tracking-wider">
@@ -414,10 +665,9 @@ export default function App() {
             </div>
           </section>
 
-          {/* 4. Sản Phẩm Tiêu Biểu & Biểu Mẫu Đặt Hàng Trực Tuyến (Customer Order Form) */}
+          {/* 4. Sản Phẩm Tiêu Biểu & Biểu Mẫu Đặt Hàng Trực Tuyến */}
           <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-              {/* Cột trái: Sản phẩm & Giá tham chiếu */}
               <div className="space-y-4">
                 <div className="space-y-1">
                   <span className="text-xs font-bold text-emerald-700 uppercase">Sản Phẩm Thương Phẩm</span>
@@ -470,7 +720,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Cột phải: Form Đặt Hàng Trực Tiếp Cho Khách Hàng */}
               <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-4">
                 <div>
                   <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
@@ -598,16 +847,29 @@ export default function App() {
       )}
 
       {/* ========================================================================= */}
-      {/* ⚙️ CHẾ ĐỘ 2: CỔNG QUẢN TRỊ NỘI BỘ HTX (10 PHÂN HỆ NGHIỆP VỤ) */}
+      {/* ⚙️ CHẾ ĐỘ 2: CỔNG QUẢN TRỊ NỘI BỘ HTX (10 PHÂN HỆ NGHIỆP VỤ + PHÂN QUYỀN) */}
       {/* ========================================================================= */}
       {viewMode === 'admin' && (
         <div className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col md:flex-row gap-6">
-          {/* Left Sidebar Menu: 10 Chức Năng Cốt Lõi */}
+          {/* Left Sidebar Menu: 10 Chức Năng Cốt Lõi Được Lọc Theo Phân Quyền */}
           <aside className="w-full md:w-64 shrink-0">
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-3 sticky top-20">
-              <div className="px-3 py-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Phân Hệ Quản Trị (10 Phân Hệ)
+              <div className="px-3 py-2 text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                <span>Phân Hệ Quản Trị</span>
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-mono">
+                  {currentUser?.role}
+                </span>
               </div>
+
+              {/* Thông tin vai trò người dùng hiện tại */}
+              <div className="p-2.5 mx-1 mb-2 bg-slate-50 border border-slate-200/70 rounded-xl text-xs space-y-0.5">
+                <div className="font-bold text-slate-900 flex items-center gap-1">
+                  <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  {currentUser?.name}
+                </div>
+                <div className="text-[11px] text-emerald-700 font-medium">{currentUser?.roleName}</div>
+              </div>
+
               <nav className="space-y-1">
                 {[
                   { id: 'overview', label: 'Tổng Quan Bảng Điều Khiển', icon: Layers },
@@ -623,7 +885,25 @@ export default function App() {
                   { id: 'financials', label: '10. Tổng Hợp Chi Phí & Hiệu Quả', icon: DollarSign },
                 ].map((item) => {
                   const Icon = item.icon
+                  const isAllowed = isModuleAllowed(item.id as ModuleType)
                   const isActive = activeModule === item.id
+
+                  if (!isAllowed) {
+                    return (
+                      <div
+                        key={item.id}
+                        title="Bạn không có quyền truy cập phân hệ này"
+                        className="w-full text-left px-3 py-2 rounded-xl text-xs font-medium text-slate-300 flex items-center justify-between cursor-not-allowed select-none"
+                      >
+                        <div className="flex items-center space-x-2.5 truncate">
+                          <Icon className="w-3.5 h-3.5 text-slate-300" />
+                          <span className="truncate">{item.label}</span>
+                        </div>
+                        <Lock className="w-3 h-3 text-slate-300" />
+                      </div>
+                    )
+                  }
+
                   return (
                     <button
                       key={item.id}
@@ -644,10 +924,16 @@ export default function App() {
                 })}
               </nav>
 
-              <div className="mt-4 pt-4 border-t border-slate-100 px-3">
+              <div className="mt-4 pt-3 border-t border-slate-100 px-2 space-y-1.5">
+                <button
+                  onClick={() => setShowAuthModal(true)}
+                  className="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-800 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition"
+                >
+                  <RefreshCwIcon className="w-3.5 h-3.5" /> Đổi Vai Trò Thử Nghiệm
+                </button>
                 <button
                   onClick={() => setViewMode('customer')}
-                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition"
+                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition"
                 >
                   ← Ra Trang Chủ Khách Hàng
                 </button>
@@ -826,12 +1112,18 @@ export default function App() {
                     <h2 className="text-lg font-bold text-slate-900">Danh Sách Hộ Chăn Nuôi & Thành Viên HTX</h2>
                     <p className="text-xs text-slate-500">Quản lý định danh hộ, quy mô sức chứa, chứng nhận VietGAHP</p>
                   </div>
-                  <button
-                    onClick={() => alert('Chức năng thêm Hộ chăn nuôi mới')}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-1.5 transition"
-                  >
-                    <Plus className="w-4 h-4" /> Thêm Hộ Mới
-                  </button>
+                  {(currentUser?.role === 'COOP_ADMIN' || currentUser?.role === 'SUPER_ADMIN') && (
+                    <button
+                      onClick={() => {
+                        setRegRole('FARMER_HOUSEHOLD')
+                        setAuthTab('register')
+                        setShowAuthModal(true)
+                      }}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-1.5 transition"
+                    >
+                      <Plus className="w-4 h-4" /> Kết Nạp Hộ Mới
+                    </button>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
@@ -1357,6 +1649,214 @@ export default function App() {
         </div>
       )}
 
+      {/* ========================================================================= */}
+      {/* MODAL: ĐĂNG NHẬP / ĐĂNG KÝ / PHÂN QUYỀN DEMO */}
+      {/* ========================================================================= */}
+      {showAuthModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setAuthTab('login')}
+                  className={`text-sm font-bold pb-1 transition ${
+                    authTab === 'login'
+                      ? 'text-emerald-700 border-b-2 border-emerald-600'
+                      : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  Đăng Nhập
+                </button>
+                <button
+                  onClick={() => setAuthTab('register')}
+                  className={`text-sm font-bold pb-1 transition ${
+                    authTab === 'register'
+                      ? 'text-emerald-700 border-b-2 border-emerald-600'
+                      : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  Đăng Ký Tài Khoản
+                </button>
+              </div>
+              <button
+                onClick={() => setShowAuthModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-lg leading-none"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* TAB ĐĂNG NHẬP */}
+            {authTab === 'login' && (
+              <div className="space-y-4">
+                <form onSubmit={handleManualLogin} className="space-y-3 text-xs">
+                  {loginError && (
+                    <div className="p-2.5 bg-red-50 text-red-700 rounded-xl border border-red-200">
+                      {loginError}
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Tên Đăng Nhập / Email</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="admin_minhtrung, vet_an, acc_mai, farmer_bathanh..."
+                      value={loginUsername}
+                      onChange={(e) => setLoginUsername(e.target.value)}
+                      className="w-full border border-slate-300 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Mật Khẩu</label>
+                    <input
+                      type="password"
+                      required
+                      placeholder="••••••••"
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      className="w-full border border-slate-300 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs shadow-sm transition"
+                  >
+                    Đăng Nhập Hệ Thống
+                  </button>
+                </form>
+
+                {/* Phân quyền 1 chạm để người chấm / giáo viên thử nghiệm ngay */}
+                <div className="pt-3 border-t border-slate-100 space-y-2">
+                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider text-center">
+                    ⚡ Đăng Nhập Thử Nghiệm 1 Chạm (Theo Vai Trò)
+                  </div>
+                  <div className="grid grid-cols-1 gap-1.5 text-xs">
+                    {mockDemoUsers.map((u) => (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => handleQuickLoginAs(u)}
+                        className="p-2 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 flex items-center justify-between text-left transition"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="w-5 h-5 rounded bg-emerald-600 text-white text-[9px] font-bold flex items-center justify-center">
+                            {u.avatarBadge}
+                          </span>
+                          <div>
+                            <span className="font-semibold text-slate-900">{u.name}</span>
+                            <span className="text-[10px] text-slate-400 ml-1.5">({u.username})</span>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-medium text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">
+                          {u.roleName}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB ĐĂNG KÝ */}
+            {authTab === 'register' && (
+              <form onSubmit={handleRegister} className="space-y-3 text-xs">
+                {regSuccessMsg && (
+                  <div className="p-2.5 bg-emerald-50 text-emerald-800 rounded-xl border border-emerald-200 flex items-center gap-1.5">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{regSuccessMsg}</span>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">Họ và Tên</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="VD: Nguyễn Văn C"
+                    value={regFullName}
+                    onChange={(e) => setRegFullName(e.target.value)}
+                    className="w-full border border-slate-300 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Tên Đăng Nhập</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="VD: farmer_c"
+                      value={regUsername}
+                      onChange={(e) => setRegUsername(e.target.value)}
+                      className="w-full border border-slate-300 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Số Điện Thoại</label>
+                    <input
+                      type="tel"
+                      required
+                      placeholder="0918 xxx xxx"
+                      value={regPhone}
+                      onChange={(e) => setRegPhone(e.target.value)}
+                      className="w-full border border-slate-300 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">Vai Trò Đăng Ký</label>
+                  <select
+                    value={regRole}
+                    onChange={(e) => setRegRole(e.target.value as RoleCode)}
+                    className="w-full border border-slate-300 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none font-semibold text-emerald-800"
+                  >
+                    <option value="FARMER_HOUSEHOLD">Hộ Chăn Nuôi Thành Viên Gia Nhập HTX</option>
+                    <option value="BUYER">Khách Hàng / Thương Lái / Đối Tác Tiêu Thụ</option>
+                    <option value="VETERINARIAN">Cán Bộ Thú Y & Kỹ Thuật Chăn Nuôi</option>
+                    <option value="ACCOUNTANT">Kế Toán / Quản Lý Kho</option>
+                  </select>
+                </div>
+
+                {regRole === 'FARMER_HOUSEHOLD' && (
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Địa Chỉ Trang Trại Nuôi</label>
+                    <input
+                      type="text"
+                      value={regAddress}
+                      onChange={(e) => setRegAddress(e.target.value)}
+                      className="w-full border border-slate-300 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">Mật Khẩu</label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Tối thiểu 6 ký tự"
+                    value={regPassword}
+                    onChange={(e) => setRegPassword(e.target.value)}
+                    className="w-full border border-slate-300 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs shadow-sm transition"
+                >
+                  Tạo Tài Khoản & Bắt Đầu
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Modal: Thêm đàn mới (Admin) */}
       {showAddModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -1479,5 +1979,27 @@ export default function App() {
         Đồ án thực tập: Hệ Thống Quản Lý Chuyển Đổi Số HTX Chăn Nuôi — Trường Đại học An Giang & HTX Dịch Vụ Nông Nghiệp Minh Trung (Tây Ninh) 2026.
       </footer>
     </div>
+  )
+}
+
+function RefreshCwIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+      <path d="M3 21v-5h5" />
+    </svg>
   )
 }
